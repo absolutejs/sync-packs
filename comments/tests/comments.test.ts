@@ -384,7 +384,7 @@ describe('createCommentsPack', () => {
 				name: '@absolutejs/sync-pack-comments',
 				ownsTables: ['comments'],
 				readsTables: [],
-				version: '0.2.0'
+				version: '0.3.0'
 			}
 		]);
 		expect(inspection.readers).toContain('comments');
@@ -511,6 +511,59 @@ describe('createCommentsPack', () => {
 			)
 		);
 		expect((subscribeError as Error).message).toMatch(/Not authorized/);
+	});
+
+	// ─── 0.3 — full-text search ───────────────────────────────────────────
+
+	test('search undefined: no comments-search collection is registered', () => {
+		const engine = createSyncEngine();
+		engine.registerPack(
+			createCommentsPack<Ctx>({
+				canReadResource: () => true,
+				getActorId: (ctx) => ctx.userId
+			})
+		);
+		expect(engine.inspect().collections.map((c) => c.name)).not.toContain(
+			'comments-search'
+		);
+	});
+
+	test('search set: full-text search collection returns ranked hits over body', async () => {
+		const engine = createSyncEngine();
+		engine.registerPack(
+			createCommentsPack<Ctx>({
+				canReadResource: () => true,
+				getActorId: (ctx) => ctx.userId,
+				newId: newIdFactory(),
+				search: { topK: 5 }
+			})
+		);
+
+		await engine.runMutation(
+			'comments:create',
+			{ body: 'apple pie recipe', resourceId: 'doc' },
+			{ userId: 'alice' }
+		);
+		await engine.runMutation(
+			'comments:create',
+			{ body: 'orange marmalade recipe', resourceId: 'doc' },
+			{ userId: 'alice' }
+		);
+		await engine.runMutation(
+			'comments:create',
+			{ body: 'no fruit here', resourceId: 'doc' },
+			{ userId: 'alice' }
+		);
+
+		const sub = await engine.subscribe<CommentRow, string>({
+			collection: 'comments-search',
+			ctx: { userId: 'alice' },
+			onDiff: () => {},
+			params: 'recipe'
+		});
+		// Both "recipe" comments come back, sorted by score; the third doesn't.
+		const bodies = sub.initial.map((row) => row.body).sort();
+		expect(bodies).toEqual(['apple pie recipe', 'orange marmalade recipe']);
 	});
 
 	test('orphaned authors are excluded by the engine inner-join semantics', async () => {

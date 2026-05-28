@@ -25,10 +25,12 @@
  */
 
 import {
+	createTextIndex,
 	defineCollection,
 	defineJoinCollection,
 	defineMutation,
 	defineSchema,
+	defineSearchCollection,
 	defineSyncPack,
 	field,
 	UnauthorizedError,
@@ -181,6 +183,14 @@ export type CommentsPackConfig<
 	 * the configured name.
 	 */
 	joinUsers?: JoinUsersConfig<Ctx, AuthorRow>;
+	/**
+	 * When set, register a `comments-search` full-text search collection
+	 * over the body field. The subscription's `params` is the query string;
+	 * results are the ranked top-K, re-ranked live as comments are added,
+	 * edited, or removed. Per-row read permission (which routes through
+	 * `canReadResource`) still filters hits per caller.
+	 */
+	search?: { topK?: number };
 };
 
 /**
@@ -279,12 +289,15 @@ export const createCommentsPack = <
 	const joinCollectionName = `${prefix}comments-with-author`;
 	const userKey = (joinUsers?.key ?? ((row: unknown) =>
 		(row as { id: string }).id)) as (user: unknown) => string;
+	const search = config.search;
+	const searchCollectionName = `${prefix}comments-search`;
+	const searchTopK = search?.topK ?? 20;
 
 	const pack: SyncPack = {
 		name: '@absolutejs/sync-pack-comments',
 		ownsTables: [table],
 		readsTables: joinUsers === undefined ? [] : [userTable],
-		version: '0.2.0',
+		version: '0.3.0',
 
 		schemas: defineSchema({
 			[table]: {
@@ -468,6 +481,24 @@ export const createCommentsPack = <
 
 	if (config.bodyCrdt !== undefined) {
 		pack.crdt = { [table]: { body: config.bodyCrdt } };
+	}
+
+	if (search !== undefined) {
+		pack.searchCollections = [
+			defineSearchCollection<CommentRow>({
+				name: searchCollectionName,
+				table,
+				index: () =>
+					createTextIndex<CommentRow>({
+						fields: ['body'],
+						key: (row) => row.id
+					}),
+				key: (row) => row.id,
+				limit: searchTopK,
+				source: () =>
+					store.reader.all({}) as Iterable<CommentRow>
+			})
+		];
 	}
 
 	if (joinUsers !== undefined) {
