@@ -205,12 +205,13 @@ export const createPresencePack = <
 	const scope = config.scope as PresencePackConfig['scope'];
 
 	type Params = { channel: string };
+	const cursorMutationName = `${prefix}presence:cursor`;
 
 	return defineSyncPack({
 		name: '@absolutejs/sync-pack-presence',
 		ownsTables: [table],
 		readsTables: [],
-		version: '0.1.0',
+		version: '0.2.0',
 
 		schemas: defineSchema({
 			[table]: {
@@ -350,6 +351,41 @@ export const createPresencePack = <
 					await actions.delete(table, {
 						id: `${_args.channel}:${actorId}`
 					});
+				}
+			}),
+			// presence:cursor — patches the existing row's state.cursor
+			// field without bumping TTL. The classic "many-updates-per-
+			// second" path for collaborative editors. Throws if the actor
+			// hasn't heartbeated yet (TTL semantics still own membership).
+			defineMutation<
+				{ channel: string; cursor: unknown },
+				CollectionContext,
+				PresenceRow<State>
+			>({
+				name: cursorMutationName,
+				handler: async (args, ctx, actions) => {
+					const actorId = resolveActorId(getActorId, ctx);
+					const rowId = `${args.channel}:${actorId}`;
+					const existing = (
+						store.reader.all(ctx as CollectionContext) as
+							PresenceRow<State>[]
+					).find((r) => r.id === rowId);
+					if (existing === undefined) {
+						throw new Error(
+							`presence:cursor: no heartbeat for ${rowId} (call presence:heartbeat first)`
+						);
+					}
+					// Merge: existing state + { cursor }. Doesn't touch
+					// expiresAt or heartbeatAt — separate from TTL.
+					const merged: PresenceRow<State> = {
+						...existing,
+						state: {
+							...((existing.state ?? {}) as Record<string, unknown>),
+							cursor: args.cursor
+						} as State
+					};
+					return (await actions.update(table, merged)) as
+						PresenceRow<State>;
 				}
 			})
 		],

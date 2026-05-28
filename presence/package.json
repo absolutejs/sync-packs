@@ -1,6 +1,6 @@
 {
 	"name": "@absolutejs/sync-pack-presence",
-	"version": "0.1.1",
+	"version": "0.2.0",
 	"description": "Per-channel live presence pack for @absolutejs/sync — heartbeat-driven, scoped, TTL-cleaned",
 	"repository": {
 		"type": "git",

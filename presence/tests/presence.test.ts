@@ -273,6 +273,65 @@ describe('createPresencePack', () => {
 		);
 	});
 
+	// ─── 0.2 — cursor updates ────────────────────────────────────────────
+
+	test('presence:cursor patches state.cursor without resetting TTL', async () => {
+		const engine = createSyncEngine();
+		let clock = 1000;
+		engine.registerPack(
+			createPresencePack<Ctx>({
+				heartbeatTtlSec: 10,
+				now: () => clock
+			})
+		);
+
+		await engine.runMutation(
+			'presence:heartbeat',
+			{ channel: 'doc-1', state: { name: 'alice', typing: false } },
+			{ userId: 'alice' }
+		);
+
+		// Cursor update some time later — does NOT bump expiresAt.
+		clock = 3000;
+		await engine.runMutation(
+			'presence:cursor',
+			{ channel: 'doc-1', cursor: { x: 42, y: 7 } },
+			{ userId: 'alice' }
+		);
+
+		const view = await engine.subscribe<PresenceRow, { channel: string }>({
+			collection: 'presence',
+			ctx: { userId: 'alice' },
+			onDiff: () => {},
+			params: { channel: 'doc-1' }
+		});
+		expect(view.initial[0]).toMatchObject({
+			state: {
+				cursor: { x: 42, y: 7 },
+				name: 'alice',
+				typing: false
+			},
+			// Critically: heartbeatAt / expiresAt unchanged from the original
+			// heartbeat at t=1000.
+			heartbeatAt: 1000,
+			expiresAt: 11000
+		});
+	});
+
+	test('presence:cursor without a prior heartbeat throws', async () => {
+		const engine = createSyncEngine();
+		engine.registerPack(createPresencePack<Ctx>({ heartbeatTtlSec: 60 }));
+
+		const error = await expectRejection(() =>
+			engine.runMutation(
+				'presence:cursor',
+				{ channel: 'doc-1', cursor: { x: 1, y: 2 } },
+				{ userId: 'alice' }
+			)
+		);
+		expect((error as Error).message).toMatch(/no heartbeat for/);
+	});
+
 	test('engine.inspect() surfaces the pack and its owned table', () => {
 		const engine = createSyncEngine();
 		engine.registerPack(createPresencePack<Ctx>());
@@ -281,7 +340,7 @@ describe('createPresencePack', () => {
 		expect(inspection.packs).toEqual([
 			{
 				name: '@absolutejs/sync-pack-presence',
-				version: '0.1.0',
+				version: '0.2.0',
 				ownsTables: ['presence'],
 				readsTables: []
 			}
