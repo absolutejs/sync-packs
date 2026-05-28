@@ -1,0 +1,16 @@
+{
+	"name": "@absolutejs/sync-packs",
+	"private": true,
+	"type": "module",
+	"description": "Feature packs for @absolutejs/sync — Convex Components without the lock-in (presence, comments, scheduled-digest, ...)",
+	"workspaces": ["presence"],
+	"scripts": {
+		"build": "bun run --filter './*' build",
+		"format": "prettier --write \"./*/src/**/*.{ts,json,md}\" \"./*/tests/**/*.ts\" \"./*/README.md\"",
+		"test": "bun run --filter './*' test",
+		"typecheck": "bun run --filter './*' typecheck"
+	},
+	"devDependencies": {
+		"prettier": "3.5.3"
+	}
+}
