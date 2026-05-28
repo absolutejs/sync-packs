@@ -14,6 +14,7 @@
 
 import { describe, expect, test } from 'bun:test';
 import { createSyncEngine } from '@absolutejs/sync/engine';
+import { expectRejection } from '@absolutejs/sync/testing';
 import {
 	createInMemoryPresenceStore,
 	createPresencePack,
@@ -21,15 +22,6 @@ import {
 } from '../src';
 
 type Ctx = { userId: string; workspaceId?: string };
-
-const rejection = async (fn: () => unknown): Promise<unknown> => {
-	try {
-		await fn();
-	} catch (error) {
-		return error;
-	}
-	throw new Error('expected throw');
-};
 
 describe('createPresencePack', () => {
 	test('heartbeat inserts then updates without duplicating rows', async () => {
@@ -269,7 +261,7 @@ describe('createPresencePack', () => {
 		const engine = createSyncEngine();
 		engine.registerPack(createPresencePack<Ctx>({ heartbeatTtlSec: 60 }));
 
-		const error = await rejection(() =>
+		const error = await expectRejection(() =>
 			engine.runMutation(
 				'presence:heartbeat',
 				{ channel: 'doc-1', state: null },

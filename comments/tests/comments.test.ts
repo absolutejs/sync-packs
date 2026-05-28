@@ -14,6 +14,7 @@
 
 import { describe, expect, test } from 'bun:test';
 import { createSyncEngine } from '@absolutejs/sync/engine';
+import { expectRejection } from '@absolutejs/sync/testing';
 import {
 	CommentDepthExceededError,
 	CommentParentMismatchError,
@@ -23,15 +24,6 @@ import {
 } from '../src';
 
 type Ctx = { userId?: string; isModerator?: boolean };
-
-const rejection = async (fn: () => unknown): Promise<unknown> => {
-	try {
-		await fn();
-	} catch (error) {
-		return error;
-	}
-	throw new Error('expected throw');
-};
 
 // A predictable ID generator so test rows are easy to point at.
 const newIdFactory = () => {
@@ -101,7 +93,7 @@ describe('createCommentsPack', () => {
 		);
 
 		// Bob cannot post on the same private resource.
-		const error = await rejection(() =>
+		const error = await expectRejection(() =>
 			engine.runMutation(
 				'comments:create',
 				{ body: 'bob-attempt', resourceId: 'private' },
@@ -113,7 +105,7 @@ describe('createCommentsPack', () => {
 		);
 
 		// Bob also can't subscribe to the private resource's collection.
-		const subscribeError = await rejection(() =>
+		const subscribeError = await expectRejection(() =>
 			engine.subscribe<CommentRow, { resourceId: string }>({
 				collection: 'comments',
 				ctx: { userId: 'bob' },
@@ -178,7 +170,7 @@ describe('createCommentsPack', () => {
 		expect(reply2.depth).toBe(2);
 
 		// A fourth-level reply (depth 3) should fail (max is 2).
-		const error = await rejection(() =>
+		const error = await expectRejection(() =>
 			engine.runMutation(
 				'comments:create',
 				{
@@ -209,7 +201,7 @@ describe('createCommentsPack', () => {
 			{ userId: 'alice' }
 		)) as CommentRow;
 
-		const error = await rejection(() =>
+		const error = await expectRejection(() =>
 			engine.runMutation(
 				'comments:create',
 				{
@@ -243,7 +235,7 @@ describe('createCommentsPack', () => {
 		expect(created.editedAt).toBeNull();
 
 		// Non-author can't edit.
-		const error = await rejection(() =>
+		const error = await expectRejection(() =>
 			engine.runMutation(
 				'comments:edit',
 				{ body: 'hijacked', commentId: created.id },
@@ -305,7 +297,7 @@ describe('createCommentsPack', () => {
 			{ userId: 'alice' }
 		);
 		// Random user can't delete alice's other comment.
-		const refused = await rejection(() =>
+		const refused = await expectRejection(() =>
 			engine.runMutation(
 				'comments:delete',
 				{ commentId: alice2.id },
