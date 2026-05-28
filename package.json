@@ -8,7 +8,8 @@
 		"comments",
 		"digest",
 		"notifications",
-		"favorites"
+		"favorites",
+		"counters"
 	],
 	"scripts": {
 		"build": "bun run --filter './*' build",
