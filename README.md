@@ -12,6 +12,7 @@ for the API rationale.
 | `comments/`  | `@absolutejs/sync-pack-comments`   | Threaded comments on host-side resources (ACL injection + CRDT)    | ✅ 0.1.0    |
 | `digest/`    | `@absolutejs/sync-pack-digest`     | Scheduled per-actor digest emails (cursor-managed, transport-agnostic) | ✅ 0.2.0    |
 | `notifications/` | `@absolutejs/sync-pack-notifications` | Per-actor inbox (notify + markRead + auto-archive)             | ✅ 0.1.0    |
+| `favorites/` | `@absolutejs/sync-pack-favorites`  | Per-actor saved resources (toggle + optional join to host resources) | ✅ 0.1.0    |
 
 ## Why packs
 
