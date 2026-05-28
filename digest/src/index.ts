@@ -176,6 +176,20 @@ export type DigestPackConfig<Ctx = CollectionContext> = {
 		phase: 'buildDigest' | 'send' | 'cursor';
 		error: unknown;
 	}) => void;
+	/**
+	 * When `true`, the schedule builds each digest as usual but does NOT
+	 * call `send` and does NOT update cursors. Use for hosting QA, preview
+	 * fires from staging, or "what would the next digest look like?"
+	 * tooling. Built payloads are surfaced through `onActorPreview` so
+	 * the host can render them to an admin UI.
+	 */
+	dryRun?: boolean;
+	/**
+	 * Called for each actor whose digest was successfully built, regardless
+	 * of `dryRun`. In dry-run mode this is the only way to observe what
+	 * WOULD have been sent. In live mode it fires before `send`.
+	 */
+	onActorPreview?: (info: { actorId: string; payload: DigestPayload }) => void;
 };
 
 const resolveActor = (
@@ -224,7 +238,7 @@ export const createDigestPack = <Ctx = CollectionContext>(
 		name: '@absolutejs/sync-pack-digest',
 		ownsTables: [table],
 		readsTables: [],
-		version: '0.1.0',
+		version: '0.2.0',
 
 		schemas: defineSchema({
 			[table]: {
@@ -335,6 +349,15 @@ export const createDigestPack = <Ctx = CollectionContext>(
 						if (payload === null) {
 							// Host signalled no content for this actor — skip
 							// without bumping the cursor.
+							continue;
+						}
+						// Surface the built payload for both live and dry-run
+						// callers. Lets a host preview / audit / log each digest.
+						config.onActorPreview?.({ actorId, payload });
+						if (config.dryRun === true) {
+							// dryRun: skip send AND cursor write. Count it as
+							// processed so maxActorsPerFire still caps the loop.
+							processed++;
 							continue;
 						}
 						try {

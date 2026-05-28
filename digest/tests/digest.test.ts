@@ -267,7 +267,7 @@ describe('createDigestPack', () => {
 				name: '@absolutejs/sync-pack-digest',
 				ownsTables: ['digest_cursors'],
 				readsTables: [],
-				version: '0.1.0'
+				version: '0.2.0'
 			}
 		]);
 		expect(inspection.readers).toContain('digest_cursors');
@@ -278,6 +278,75 @@ describe('createDigestPack', () => {
 		expect(inspection.collections.map((c) => c.name)).toContain(
 			'digest_cursors'
 		);
+	});
+
+	// ─── 0.2 — dryRun + onActorPreview ────────────────────────────────────
+
+	test('dryRun true: builds payloads, calls onActorPreview, skips send and cursor writes', async () => {
+		const engine = createSyncEngine();
+		const store = createInMemoryDigestStore();
+		const { send, sent } = collectingSend();
+		const previews: { actorId: string; subject: string }[] = [];
+
+		engine.registerPack(
+			createDigestPack<Ctx>({
+				buildDigest: constBuilder('preview'),
+				dryRun: true,
+				listActors: () => ['alice', 'bob'],
+				onActorPreview: ({ actorId, payload }) =>
+					previews.push({ actorId, subject: payload.subject }),
+				send,
+				store
+			})
+		);
+
+		await engine.runSchedule('digest:fire');
+
+		// send NEVER called.
+		expect(sent.length).toBe(0);
+		// cursor NEVER written.
+		expect((store.reader.all({}) as DigestCursor[]).length).toBe(0);
+		// previews fired for every actor.
+		expect(previews).toEqual([
+			{ actorId: 'alice', subject: 'preview' },
+			{ actorId: 'bob', subject: 'preview' }
+		]);
+	});
+
+	test('dryRun absent: onActorPreview still fires for live sends', async () => {
+		const engine = createSyncEngine();
+		const { send, sent } = collectingSend();
+		const previews: string[] = [];
+
+		engine.registerPack(
+			createDigestPack<Ctx>({
+				buildDigest: constBuilder('live'),
+				listActors: () => ['alice'],
+				onActorPreview: ({ actorId }) => previews.push(actorId),
+				send
+			})
+		);
+
+		await engine.runSchedule('digest:fire');
+		expect(sent.length).toBe(1);
+		expect(previews).toEqual(['alice']);
+	});
+
+	test('dryRun respects maxActorsPerFire (counts previewed actors)', async () => {
+		const engine = createSyncEngine();
+		const previewed: string[] = [];
+		engine.registerPack(
+			createDigestPack<Ctx>({
+				buildDigest: constBuilder('preview'),
+				dryRun: true,
+				listActors: () => ['a', 'b', 'c', 'd', 'e'],
+				maxActorsPerFire: 2,
+				onActorPreview: ({ actorId }) => previewed.push(actorId),
+				send: async () => {}
+			})
+		);
+		await engine.runSchedule('digest:fire');
+		expect(previewed).toEqual(['a', 'b']);
 	});
 
 	test('the schedule passes the retry policy through to defineSchedule', async () => {

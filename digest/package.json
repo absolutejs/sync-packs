@@ -1,6 +1,6 @@
 {
 	"name": "@absolutejs/sync-pack-digest",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Scheduled per-actor digest pack for @absolutejs/sync — cron-fired, cursor-managed, transport-agnostic",
 	"repository": {
 		"type": "git",
