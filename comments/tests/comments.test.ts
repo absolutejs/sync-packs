@@ -384,7 +384,7 @@ describe('createCommentsPack', () => {
 				name: '@absolutejs/sync-pack-comments',
 				ownsTables: ['comments'],
 				readsTables: [],
-				version: '0.1.0'
+				version: '0.2.0'
 			}
 		]);
 		expect(inspection.readers).toContain('comments');
@@ -393,5 +393,165 @@ describe('createCommentsPack', () => {
 		expect(inspection.mutations).toContain('comments:edit');
 		expect(inspection.mutations).toContain('comments:delete');
 		expect(inspection.collections.map((c) => c.name)).toContain('comments');
+	});
+
+	// ─── 0.2 — comments-with-author join collection ───────────────────────
+
+	type AuthorRow = { id: string; displayName: string; avatarUrl?: string };
+
+	const wireUsers = (users: AuthorRow[]) => {
+		// Host-side users table: minimal reader so the engine can route
+		// applyChange + serve join right-side hydrates.
+		return {
+			all: () => users
+		};
+	};
+
+	test('joinUsers undefined: no comments-with-author collection is registered', () => {
+		const engine = createSyncEngine();
+		engine.registerPack(
+			createCommentsPack<Ctx>({
+				canReadResource: () => true,
+				getActorId: (ctx) => ctx.userId
+			})
+		);
+		const collections = engine.inspect().collections.map((c) => c.name);
+		expect(collections).not.toContain('comments-with-author');
+	});
+
+	test('joinUsers set: the join collection is registered and reads the user table', () => {
+		const engine = createSyncEngine();
+		engine.registerReader('users', wireUsers([]));
+		engine.registerPack(
+			createCommentsPack<Ctx>({
+				canReadResource: () => true,
+				getActorId: (ctx) => ctx.userId,
+				joinUsers: { hydrate: () => [] }
+			})
+		);
+		const inspection = engine.inspect();
+		expect(inspection.collections.map((c) => c.name)).toContain(
+			'comments-with-author'
+		);
+		expect(inspection.packs[0]?.readsTables).toEqual(['users']);
+	});
+
+	test('subscribing to the join returns CommentRow & { author }', async () => {
+		const engine = createSyncEngine();
+		const users: AuthorRow[] = [
+			{ displayName: 'Alice Anderson', id: 'alice' },
+			{ displayName: 'Bob Brown', id: 'bob' }
+		];
+		engine.registerReader('users', wireUsers(users));
+		engine.registerPack(
+			createCommentsPack<Ctx, AuthorRow>({
+				canReadResource: () => true,
+				getActorId: (ctx) => ctx.userId,
+				joinUsers: { hydrate: () => users },
+				newId: newIdFactory()
+			})
+		);
+
+		await engine.runMutation(
+			'comments:create',
+			{ body: 'hello from alice', resourceId: 'doc-1' },
+			{ userId: 'alice' }
+		);
+		await engine.runMutation(
+			'comments:create',
+			{ body: 'hello from bob', resourceId: 'doc-1' },
+			{ userId: 'bob' }
+		);
+
+		const subscription = await engine.subscribe<
+			CommentRow & { author: AuthorRow },
+			{ resourceId: string }
+		>({
+			collection: 'comments-with-author',
+			ctx: { userId: 'someone' },
+			onDiff: () => {},
+			params: { resourceId: 'doc-1' }
+		});
+
+		const rows = [...subscription.initial].sort((first, second) =>
+			first.authorId.localeCompare(second.authorId)
+		);
+		expect(rows.length).toBe(2);
+		expect(rows[0]?.author).toEqual({
+			displayName: 'Alice Anderson',
+			id: 'alice'
+		});
+		expect(rows[1]?.author).toEqual({
+			displayName: 'Bob Brown',
+			id: 'bob'
+		});
+	});
+
+	test('canReadResource gates the join collection too', async () => {
+		const engine = createSyncEngine();
+		engine.registerReader('users', wireUsers([]));
+		engine.registerPack(
+			createCommentsPack<Ctx, AuthorRow>({
+				canReadResource: (resourceId, ctx) =>
+					resourceId === 'public' || ctx.userId === 'alice',
+				getActorId: (ctx) => ctx.userId,
+				joinUsers: { hydrate: () => [] },
+				newId: newIdFactory()
+			})
+		);
+
+		const subscribeError = await expectRejection(() =>
+			engine.subscribe<CommentRow & { author: AuthorRow }, { resourceId: string }>(
+				{
+					collection: 'comments-with-author',
+					ctx: { userId: 'bob' },
+					onDiff: () => {},
+					params: { resourceId: 'private' }
+				}
+			)
+		);
+		expect((subscribeError as Error).message).toMatch(/Not authorized/);
+	});
+
+	test('orphaned authors are excluded by the engine inner-join semantics', async () => {
+		const engine = createSyncEngine();
+		// `alice` has a user row; `ghost` does not — its comment should NOT
+		// appear in the join.
+		const users: AuthorRow[] = [
+			{ displayName: 'Alice Anderson', id: 'alice' }
+		];
+		engine.registerReader('users', wireUsers(users));
+		engine.registerPack(
+			createCommentsPack<Ctx, AuthorRow>({
+				canReadResource: () => true,
+				getActorId: (ctx) => ctx.userId,
+				joinUsers: { hydrate: () => users },
+				newId: newIdFactory()
+			})
+		);
+
+		await engine.runMutation(
+			'comments:create',
+			{ body: 'from alice', resourceId: 'doc-1' },
+			{ userId: 'alice' }
+		);
+		await engine.runMutation(
+			'comments:create',
+			{ body: 'from ghost', resourceId: 'doc-1' },
+			{ userId: 'ghost' }
+		);
+
+		const subscription = await engine.subscribe<
+			CommentRow & { author: AuthorRow },
+			{ resourceId: string }
+		>({
+			collection: 'comments-with-author',
+			ctx: { userId: 'someone' },
+			onDiff: () => {},
+			params: { resourceId: 'doc-1' }
+		});
+		expect(subscription.initial.map((row) => row.authorId)).toEqual([
+			'alice'
+		]);
 	});
 });

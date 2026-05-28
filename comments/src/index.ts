@@ -2,13 +2,12 @@
  * `@absolutejs/sync-pack-comments` — threaded comments on host-side resources
  * as a sync pack.
  *
- * Owns a single `comments` table; reads no host tables of its own (the join
- * to the host's user table is the pack's planned 0.2 feature — for now the
- * `comments` collection emits `authorId` and the client looks up display
- * info). Per-resource read access is gated through host-injected
- * `canReadResource(resourceId, ctx)`. Edits are author-only; deletes are
- * author or moderator. Optional `bodyCrdt` config wires the body field
- * through `registerCrdt` for conflict-free editing.
+ * Owns a single `comments` table. Per-resource read access is gated through
+ * host-injected `canReadResource(resourceId, ctx)`. Edits are author-only;
+ * deletes are author or moderator. Optional `bodyCrdt` config wires the
+ * body field through `registerCrdt` for conflict-free editing. Optional
+ * `joinUsers` config registers a `comments-with-author` join collection
+ * that pairs each comment with the host's user row.
  *
  * @example
  * ```ts
@@ -27,6 +26,7 @@
 
 import {
 	defineCollection,
+	defineJoinCollection,
 	defineMutation,
 	defineSchema,
 	defineSyncPack,
@@ -117,7 +117,10 @@ export class CommentParentMismatchError extends Error {
 }
 
 /** Factory config. `canReadResource` is the only required field. */
-export type CommentsPackConfig<Ctx = CollectionContext> = {
+export type CommentsPackConfig<
+	Ctx = CollectionContext,
+	AuthorRow = unknown
+> = {
 	/**
 	 * Prefix applied to the owned table name AND every collection/mutation
 	 * the pack exposes. Default `""`. Use a non-empty prefix when
@@ -170,9 +173,54 @@ export type CommentsPackConfig<Ctx = CollectionContext> = {
 	 * scheme.
 	 */
 	newId?: () => string;
+	/**
+	 * When set, the pack additionally registers a `comments-with-author`
+	 * join collection. The host's user table must have a registered
+	 * reader/writer (so user-row changes propagate into the join). The
+	 * pack itself does NOT own the users table; it only `readsTables`
+	 * the configured name.
+	 */
+	joinUsers?: JoinUsersConfig<Ctx, AuthorRow>;
+};
+
+/**
+ * Config for the optional `comments-with-author` join collection.
+ *
+ * The pack does not own the host's user table. The host supplies the
+ * right-side hydrate (typically reading from its registered reader) and
+ * the join key. The engine maintains the join incrementally — changes to
+ * either side fan in through `engine.applyChange`.
+ */
+export type JoinUsersConfig<Ctx, AuthorRow = unknown> = {
+	/**
+	 * The host's user table name. Surfaced in `readsTables` so the
+	 * dependency graph is reviewable. Default `"users"`.
+	 */
+	table?: string;
+	/**
+	 * Get the user's id (the join field). Default `(user) => user.id`.
+	 */
+	key?: (user: AuthorRow) => string;
+	/**
+	 * Host-side hydrate for the users side of the join. The pack passes
+	 * the subscription params + ctx; this returns the candidate users.
+	 * Returning all users (small set) or just the authors referenced by
+	 * the comments are both fine — the engine inner-joins on `authorId
+	 * === id` after hydrate.
+	 */
+	hydrate: (
+		params: { resourceId: string },
+		ctx: Ctx
+	) => Iterable<AuthorRow> | Promise<Iterable<AuthorRow>>;
+};
+
+/** A joined row emitted by the `comments-with-author` collection. */
+export type CommentWithAuthor<AuthorRow = unknown> = CommentRow & {
+	author: AuthorRow;
 };
 
 const DEFAULT_MAX_DEPTH = 8;
+const DEFAULT_USER_TABLE = 'users';
 
 const resolveActor = (
 	getActorId: NonNullable<CommentsPackConfig['getActorId']>,
@@ -188,9 +236,17 @@ const resolveActor = (
 /**
  * Build a {@link SyncPack} that exposes threaded comments. Each call returns
  * a fresh pack with its own store (unless a custom `store` is supplied).
+ *
+ * The `AuthorRow` generic is only consulted by the
+ * `comments-with-author` join collection (when `joinUsers` is set); pass
+ * it to recover types for the joined output. With no `joinUsers`, default
+ * `unknown` is fine.
  */
-export const createCommentsPack = <Ctx = CollectionContext>(
-	config: CommentsPackConfig<Ctx>
+export const createCommentsPack = <
+	Ctx = CollectionContext,
+	AuthorRow = unknown
+>(
+	config: CommentsPackConfig<Ctx, AuthorRow>
 ): SyncPack => {
 	const prefix = config.prefix ?? '';
 	const table = `${prefix}comments`;
@@ -218,11 +274,17 @@ export const createCommentsPack = <Ctx = CollectionContext>(
 
 	type Params = { resourceId: string };
 
+	const joinUsers = config.joinUsers;
+	const userTable = joinUsers?.table ?? DEFAULT_USER_TABLE;
+	const joinCollectionName = `${prefix}comments-with-author`;
+	const userKey = (joinUsers?.key ?? ((row: unknown) =>
+		(row as { id: string }).id)) as (user: unknown) => string;
+
 	const pack: SyncPack = {
 		name: '@absolutejs/sync-pack-comments',
 		ownsTables: [table],
-		readsTables: [],
-		version: '0.1.0',
+		readsTables: joinUsers === undefined ? [] : [userTable],
+		version: '0.2.0',
 
 		schemas: defineSchema({
 			[table]: {
@@ -406,6 +468,47 @@ export const createCommentsPack = <Ctx = CollectionContext>(
 
 	if (config.bodyCrdt !== undefined) {
 		pack.crdt = { [table]: { body: config.bodyCrdt } };
+	}
+
+	if (joinUsers !== undefined) {
+		const usersHydrate = joinUsers.hydrate;
+		pack.joinCollections = [
+			defineJoinCollection<
+				CommentRow,
+				unknown,
+				CommentWithAuthor,
+				Params,
+				CollectionContext
+			>({
+				name: joinCollectionName,
+				key: (out) => out.id,
+				left: {
+					table,
+					hydrate: (params, ctx) =>
+						(store.reader.all(ctx) as CommentRow[]).filter(
+							(row) =>
+								row.resourceId === params.resourceId &&
+								canReadResource(row.resourceId, ctx)
+						),
+					key: (row) => row.id,
+					on: (row) => row.authorId,
+					// Per-resource read gate, also applied to incoming changes.
+					match: (row, params, ctx) =>
+						row.resourceId === params.resourceId &&
+						canReadResource(row.resourceId, ctx)
+				},
+				right: {
+					table: userTable,
+					hydrate: (params, ctx) =>
+						usersHydrate(params, ctx as Ctx) as Iterable<unknown>,
+					key: (user) => userKey(user),
+					on: (user) => userKey(user)
+				},
+				select: (comment, author) => ({ ...comment, author }),
+				authorize: (params, ctx) =>
+					canReadResource(params.resourceId, ctx)
+			})
+		];
 	}
 
 	return defineSyncPack(pack);

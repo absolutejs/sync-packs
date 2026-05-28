@@ -125,12 +125,55 @@ subscribe to `comments` and `presence` separately — it should NOT call
 `comments:*` from inside its own handler. See the design doc rules in
 [`syncPacks.design.md`](https://github.com/absolutejs/sync/blob/main/src/engine/syncPacks.design.md).
 
-## Planned for 0.2
+## Optional: `comments-with-author` join collection (0.2+)
 
-- **`comments-with-author` join collection** — a `defineJoinCollection`
-  variant that includes display info from the host's user table. The
-  pack would `readsTables: [userTable]` and require the host to register
-  a reader for it. Deferred until a real consumer wants it, so we don't
-  over-engineer the right-side hydrate.
+Set `joinUsers` to additionally register a `comments-with-author` join
+collection that pairs each comment with the host's user row. The pack does
+NOT own the users table; it adds it to `readsTables` so the engine knows
+the dependency and your devtools see the full graph.
+
+```ts
+type Author = { id: string; displayName: string; avatarUrl?: string };
+
+engine.registerReader('users', { all: () => db.users.list() });
+engine.registerWriter('users', { /* ... */ });
+
+engine.registerPack(
+	createCommentsPack<MyCtx, Author>({
+		canReadResource,
+		getActorId,
+		joinUsers: {
+			// Default 'users'; pass another name if your table differs.
+			table: 'users',
+			// Default (u) => u.id; override if your user id key isn't `id`.
+			// key: (user) => user.userId,
+			// Required: host supplies the users-side hydrate.
+			hydrate: () => db.users.list(),
+		},
+	}),
+);
+
+// Subscribe with the same params shape as the base collection.
+const subscription = await engine.subscribe<
+	CommentRow & { author: Author },
+	{ resourceId: string }
+>({
+	collection: 'comments-with-author',
+	params: { resourceId },
+	ctx,
+	onDiff: rerender,
+});
+// subscription.initial[0] === { ...comment, author: { id, displayName, ... } }
+```
+
+The engine inner-joins on `comment.authorId === user.id`; comments
+whose author is missing from the users table are excluded from the join
+(but still appear in the base `comments` collection). `canReadResource`
+gates the join the same way it gates the base.
+
+## Planned for 0.3+
+
 - **In-thread full-text search** via `registerSearch` on the comments
   table.
+- **Reactions** — a `reactionsTable` config that adds an emoji-reaction
+  side table with create/remove/list mutations.

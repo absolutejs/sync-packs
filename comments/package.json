@@ -1,6 +1,6 @@
 {
 	"name": "@absolutejs/sync-pack-comments",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Threaded comments pack for @absolutejs/sync — per-resource ACL-scoped, author/moderator gates, optional CRDT bodies",
 	"repository": {
 		"type": "git",
