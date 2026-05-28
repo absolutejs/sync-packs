@@ -10,7 +10,8 @@ for the API rationale.
 | ------------ | ---------------------------------- | ------------------------------------------------------------------ | ---------- |
 | `presence/`  | `@absolutejs/sync-pack-presence`   | Per-channel live presence (heartbeat + scoped reads + TTL cleanup) | ✅ 0.1.1    |
 | `comments/`  | `@absolutejs/sync-pack-comments`   | Threaded comments on host-side resources (ACL injection + CRDT)    | ✅ 0.1.0    |
-| `digest/`    | `@absolutejs/sync-pack-digest`     | Scheduled per-actor digest emails (cursor-managed, transport-agnostic) | ✅ 0.1.0    |
+| `digest/`    | `@absolutejs/sync-pack-digest`     | Scheduled per-actor digest emails (cursor-managed, transport-agnostic) | ✅ 0.2.0    |
+| `notifications/` | `@absolutejs/sync-pack-notifications` | Per-actor inbox (notify + markRead + auto-archive)             | ✅ 0.1.0    |
 
 ## Why packs
 

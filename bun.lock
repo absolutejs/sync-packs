@@ -10,7 +10,7 @@
     },
     "comments": {
       "name": "@absolutejs/sync-pack-comments",
-      "version": "0.1.0",
+      "version": "0.3.0",
       "devDependencies": {
         "@absolutejs/sync": "^1.9.2",
         "@types/bun": "1.3.14",
@@ -23,7 +23,7 @@
     },
     "digest": {
       "name": "@absolutejs/sync-pack-digest",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "devDependencies": {
         "@absolutejs/sync": "^1.9.2",
         "@types/bun": "1.3.14",
@@ -34,9 +34,22 @@
         "@absolutejs/sync": ">= 1.9.1",
       },
     },
+    "notifications": {
+      "name": "@absolutejs/sync-pack-notifications",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@absolutejs/sync": "^1.9.2",
+        "@types/bun": "1.3.14",
+        "prettier": "3.5.3",
+        "typescript": "5.8.3",
+      },
+      "peerDependencies": {
+        "@absolutejs/sync": ">= 1.9.2",
+      },
+    },
     "presence": {
       "name": "@absolutejs/sync-pack-presence",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "devDependencies": {
         "@absolutejs/sync": "^1.9.2",
         "@types/bun": "1.3.14",
@@ -54,6 +67,8 @@
     "@absolutejs/sync-pack-comments": ["@absolutejs/sync-pack-comments@workspace:comments"],
 
     "@absolutejs/sync-pack-digest": ["@absolutejs/sync-pack-digest@workspace:digest"],
+
+    "@absolutejs/sync-pack-notifications": ["@absolutejs/sync-pack-notifications@workspace:notifications"],
 
     "@absolutejs/sync-pack-presence": ["@absolutejs/sync-pack-presence@workspace:presence"],
 
