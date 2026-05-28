@@ -8,8 +8,8 @@ for the API rationale.
 
 | Pack         | Package                            | What it ships                                                      | Status     |
 | ------------ | ---------------------------------- | ------------------------------------------------------------------ | ---------- |
-| `presence/`  | `@absolutejs/sync-pack-presence`   | Per-channel live presence (heartbeat + scoped reads + TTL cleanup) | ✅ 0.1.0    |
-| `comments/`  | `@absolutejs/sync-pack-comments`   | Threaded comments on host-side resources (planned)                 | 🟡 planned |
+| `presence/`  | `@absolutejs/sync-pack-presence`   | Per-channel live presence (heartbeat + scoped reads + TTL cleanup) | ✅ 0.1.1    |
+| `comments/`  | `@absolutejs/sync-pack-comments`   | Threaded comments on host-side resources (ACL injection + CRDT)    | ✅ 0.1.0    |
 | `digest/`    | `@absolutejs/sync-pack-digest`     | Scheduled per-actor digest emails (planned)                        | 🟡 planned |
 
 ## Why packs

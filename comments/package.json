@@ -1,0 +1,51 @@
+{
+	"name": "@absolutejs/sync-pack-comments",
+	"version": "0.1.0",
+	"description": "Threaded comments pack for @absolutejs/sync — per-resource ACL-scoped, author/moderator gates, optional CRDT bodies",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/absolutejs/sync-packs.git",
+		"directory": "comments"
+	},
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"type": "module",
+	"license": "CC BY-NC 4.0",
+	"author": "Alex Kahn",
+	"publishConfig": {
+		"access": "public"
+	},
+	"keywords": [
+		"absolutejs",
+		"sync",
+		"sync-pack",
+		"comments",
+		"threading",
+		"collaboration"
+	],
+	"scripts": {
+		"build": "rm -rf dist && bun build src/index.ts --outdir dist --sourcemap --target=bun --external @absolutejs/sync && tsc --project tsconfig.build.json",
+		"test": "bun test",
+		"typecheck": "tsc --noEmit",
+		"format": "prettier --write \"./**/*.{ts,json,md}\"",
+		"release": "bun run format && bun run typecheck && bun run test && bun run build && bun publish"
+	},
+	"peerDependencies": {
+		"@absolutejs/sync": ">= 1.9.1"
+	},
+	"devDependencies": {
+		"@absolutejs/sync": "^1.9.1",
+		"@types/bun": "1.3.14",
+		"prettier": "3.5.3",
+		"typescript": "5.8.3"
+	},
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": ["dist", "README.md"]
+}
