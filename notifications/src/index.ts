@@ -184,7 +184,7 @@ export const createNotificationsPack = <Ctx = CollectionContext>(
 		name: '@absolutejs/sync-pack-notifications',
 		ownsTables: [table],
 		readsTables: [],
-		version: '0.1.0',
+		version: '0.2.0',
 
 		schemas: defineSchema({
 			[table]: {
@@ -258,22 +258,42 @@ export const createNotificationsPack = <Ctx = CollectionContext>(
 		},
 
 		collections: [
-			defineCollection<NotificationRow, void, CollectionContext>({
+			defineCollection<
+				NotificationRow,
+				{ kind?: string } | void,
+				CollectionContext
+			>({
 				name: collectionName,
 				tables: [table],
 				key: (row) => row.id,
-				hydrate: (_params, ctx) => {
+				hydrate: (params, ctx) => {
 					const callerId = getActorId(ctx);
 					const isMod = canModerate(ctx);
 					if (callerId === undefined && !isMod) return [];
+					const kind =
+						params !== undefined &&
+						params !== null &&
+						typeof params === 'object'
+							? params.kind
+							: undefined;
 					return (store.reader.all(ctx) as NotificationRow[]).filter(
-						(row) => isMod || row.actorId === callerId
+						(row) =>
+							(isMod || row.actorId === callerId) &&
+							(kind === undefined || row.kind === kind)
 					);
 				},
-				match: (row, _params, ctx) => {
+				match: (row, params, ctx) => {
 					const callerId = getActorId(ctx);
-					if (canModerate(ctx)) return true;
-					return callerId !== undefined && row.actorId === callerId;
+					const isMod = canModerate(ctx);
+					if (callerId === undefined && !isMod) return false;
+					const kind =
+						params !== undefined &&
+						params !== null &&
+						typeof params === 'object'
+							? params.kind
+							: undefined;
+					if (kind !== undefined && row.kind !== kind) return false;
+					return isMod || row.actorId === callerId;
 				},
 				authorize: (_params, ctx) =>
 					getActorId(ctx as CollectionContext) !== undefined ||

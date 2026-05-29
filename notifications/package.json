@@ -1,6 +1,6 @@
 {
 	"name": "@absolutejs/sync-pack-notifications",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Per-actor inbox pack for @absolutejs/sync — notify, mark-read, scoped reads, optional TTL auto-archive",
 	"repository": {
 		"type": "git",

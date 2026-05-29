@@ -260,8 +260,60 @@ describe('createNotificationsPack', () => {
 				name: '@absolutejs/sync-pack-notifications',
 				ownsTables: ['notifications'],
 				readsTables: [],
-				version: '0.1.0'
+				version: '0.2.0'
 			}
 		]);
+	});
+
+	// ─── 0.2 — kindFilter on the collection params ────────────────────────
+
+	test('subscribing with { kind } filters the inbox to that kind only', async () => {
+		const engine = createSyncEngine();
+		engine.registerPack(
+			createNotificationsPack<Ctx>({
+				canModerate: trustedCanModerate,
+				getActorId: (ctx) => ctx.userId,
+				newId: newIdFactory()
+			})
+		);
+		await notify(engine, {
+			actorId: 'alice',
+			kind: 'mention',
+			title: 'mention-1'
+		});
+		await notify(engine, {
+			actorId: 'alice',
+			kind: 'reply',
+			title: 'reply-1'
+		});
+		await notify(engine, {
+			actorId: 'alice',
+			kind: 'mention',
+			title: 'mention-2'
+		});
+
+		const mentionsOnly = await engine.subscribe<
+			NotificationRow,
+			{ kind?: string }
+		>({
+			collection: 'notifications',
+			ctx: { userId: 'alice' },
+			onDiff: () => {},
+			params: { kind: 'mention' }
+		});
+		expect(
+			mentionsOnly.initial.map((row) => row.title).sort()
+		).toEqual(['mention-1', 'mention-2']);
+
+		const allKinds = await engine.subscribe<
+			NotificationRow,
+			{ kind?: string }
+		>({
+			collection: 'notifications',
+			ctx: { userId: 'alice' },
+			onDiff: () => {},
+			params: {}
+		});
+		expect(allKinds.initial.length).toBe(3);
 	});
 });
