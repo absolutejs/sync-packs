@@ -191,7 +191,54 @@ export type CommentsPackConfig<
 	 * `canReadResource`) still filters hits per caller.
 	 */
 	search?: { topK?: number };
+	/**
+	 * When set, register a `comment_reactions` table + matching collection
+	 * + react / unreact / toggleReaction mutations. Each row is one
+	 * actor's reaction with a single emoji on a single comment, deterministic
+	 * id `${commentId}:${actorId}:${emoji}` for idempotent toggling.
+	 */
+	reactions?: ReactionsConfig;
 };
+
+/** Config for the optional reactions surface. */
+export type ReactionsConfig = {
+	/**
+	 * Allowed emojis. Setting this filters react mutations — anything
+	 * outside the list is rejected. Empty array (default) means any
+	 * single-character or grapheme string is accepted.
+	 */
+	allowedEmojis?: string[];
+	/**
+	 * Custom row id generator for reaction rows. Default
+	 * `(commentId, actorId, emoji) => \`${commentId}:${actorId}:${emoji}\``.
+	 */
+	newId?: (
+		commentId: string,
+		actorId: string,
+		emoji: string
+	) => string;
+};
+
+/** A reaction row — one per (comment, actor, emoji). */
+export type CommentReactionRow = {
+	id: string;
+	commentId: string;
+	actorId: string;
+	emoji: string;
+	createdAt: number;
+};
+
+/** Thrown when a react mutation supplies an emoji outside `allowedEmojis`. */
+export class CommentReactionNotAllowedError extends Error {
+	readonly emoji: string;
+	constructor(emoji: string) {
+		super(
+			`Comment reaction "${emoji}" is not in the configured allowedEmojis`
+		);
+		this.name = 'CommentReactionNotAllowedError';
+		this.emoji = emoji;
+	}
+}
 
 /**
  * Config for the optional `comments-with-author` join collection.
@@ -292,12 +339,44 @@ export const createCommentsPack = <
 	const search = config.search;
 	const searchCollectionName = `${prefix}comments-search`;
 	const searchTopK = search?.topK ?? 20;
+	const reactionsConfig = config.reactions;
+	const reactionsTable = `${prefix}comment_reactions`;
+	const reactionsCollectionName = reactionsTable;
+	const reactMutationName = `${prefix}comments:react`;
+	const unreactMutationName = `${prefix}comments:unreact`;
+	const toggleReactionMutationName = `${prefix}comments:toggleReaction`;
+	const reactionId =
+		reactionsConfig?.newId ??
+		((commentId: string, actorId: string, emoji: string) =>
+			`${commentId}:${actorId}:${emoji}`);
+	const reactionStore = new Map<string, CommentReactionRow>();
+	const reactionReader: TableReader<CollectionContext> = {
+		all: () => [...reactionStore.values()]
+	};
+	const reactionWriter: TableWriter<
+		CommentReactionRow,
+		CollectionContext,
+		unknown
+	> = {
+		delete: (row) => {
+			reactionStore.delete((row as { id: string }).id);
+		},
+		insert: (data) => {
+			reactionStore.set(data.id, data);
+			return data;
+		},
+		update: (data) => {
+			reactionStore.set(data.id, data);
+			return data;
+		}
+	};
 
 	const pack: SyncPack = {
 		name: '@absolutejs/sync-pack-comments',
-		ownsTables: [table],
+		ownsTables:
+			reactionsConfig === undefined ? [table] : [table, reactionsTable],
 		readsTables: joinUsers === undefined ? [] : [userTable],
-		version: '0.3.0',
+		version: '0.4.0',
 
 		schemas: defineSchema({
 			[table]: {
@@ -538,6 +617,205 @@ export const createCommentsPack = <
 				select: (comment, author) => ({ ...comment, author }),
 				authorize: (params, ctx) =>
 					canReadResource(params.resourceId, ctx)
+			})
+		];
+	}
+
+	if (reactionsConfig !== undefined) {
+		const allowed = reactionsConfig.allowedEmojis;
+		const isAllowed = (emoji: string): boolean =>
+			allowed === undefined || allowed.length === 0
+				? true
+				: allowed.includes(emoji);
+
+		pack.schemas = {
+			...(pack.schemas ?? {}),
+			[reactionsTable]: {
+				fields: {
+					actorId: field.string,
+					commentId: field.string,
+					createdAt: field.number,
+					emoji: field.string,
+					id: field.string
+				}
+			}
+		};
+		pack.readers = {
+			...(pack.readers ?? {}),
+			[reactionsTable]: reactionReader
+		};
+		pack.writers = {
+			...(pack.writers ?? {}),
+			[reactionsTable]: reactionWriter
+		};
+		pack.permissions = {
+			...(pack.permissions ?? {}),
+			[reactionsTable]: {
+				// Reactions are visible to anyone who can read the comment's
+				// resource. We look the comment up to gate on canReadResource.
+				read: (ctx: unknown, row: CommentReactionRow) => {
+					const comment = store.getById(row.commentId);
+					if (comment === undefined) return false;
+					return canReadResource(
+						comment.resourceId,
+						ctx as CollectionContext
+					);
+				},
+				// Per-row writes: the row's actorId must match the caller.
+				insert: (ctx: unknown, row: CommentReactionRow) => {
+					const callerId = getActorId(ctx as CollectionContext);
+					return callerId !== undefined && row.actorId === callerId;
+				},
+				update: (ctx: unknown, row: CommentReactionRow) => {
+					const callerId = getActorId(ctx as CollectionContext);
+					return callerId !== undefined && row.actorId === callerId;
+				},
+				delete: (ctx: unknown, row: CommentReactionRow) => {
+					const callerId = getActorId(ctx as CollectionContext);
+					if (callerId === undefined) return false;
+					if (
+						(row as { actorId?: string }).actorId !== undefined
+					) {
+						return (row as { actorId: string }).actorId === callerId;
+					}
+					const id = (row as { id?: string }).id;
+					if (id === undefined) return false;
+					return reactionStore.get(id)?.actorId === callerId;
+				}
+			}
+		};
+
+		pack.collections = [
+			...(pack.collections ?? []),
+			defineCollection<
+				CommentReactionRow,
+				{ commentId: string },
+				CollectionContext
+			>({
+				name: reactionsCollectionName,
+				tables: [reactionsTable],
+				key: (row) => row.id,
+				hydrate: (params, ctx) => {
+					const comment = store.getById(params.commentId);
+					if (
+						comment === undefined ||
+						!canReadResource(comment.resourceId, ctx)
+					) {
+						return [];
+					}
+					return (
+						reactionReader.all(ctx) as CommentReactionRow[]
+					).filter((row) => row.commentId === params.commentId);
+				},
+				match: (row, params, ctx) => {
+					if (row.commentId !== params.commentId) return false;
+					const comment = store.getById(params.commentId);
+					return (
+						comment !== undefined &&
+						canReadResource(comment.resourceId, ctx)
+					);
+				},
+				authorize: (params, ctx) => {
+					const comment = store.getById(params.commentId);
+					return (
+						comment !== undefined &&
+						canReadResource(comment.resourceId, ctx)
+					);
+				}
+			})
+		];
+
+		pack.mutations = [
+			...(pack.mutations ?? []),
+			defineMutation<
+				{ commentId: string; emoji: string },
+				CollectionContext,
+				CommentReactionRow
+			>({
+				name: reactMutationName,
+				handler: async (args, ctx, actions) => {
+					if (!isAllowed(args.emoji)) {
+						throw new CommentReactionNotAllowedError(args.emoji);
+					}
+					const actorId = resolveActor(getActorId, ctx);
+					const comment = store.getById(args.commentId);
+					if (comment === undefined) {
+						throw new UnauthorizedError(
+							`comments:react on missing comment "${args.commentId}"`
+						);
+					}
+					if (!canReadResource(comment.resourceId, ctx)) {
+						throw new UnauthorizedError(
+							`comments:react on comment "${args.commentId}" (no read access)`
+						);
+					}
+					const id = reactionId(args.commentId, actorId, args.emoji);
+					const existing = reactionStore.get(id);
+					if (existing !== undefined) return existing;
+					const row: CommentReactionRow = {
+						actorId,
+						commentId: args.commentId,
+						createdAt: now(),
+						emoji: args.emoji,
+						id
+					};
+					return (await actions.insert(
+						reactionsTable,
+						row
+					)) as CommentReactionRow;
+				}
+			}),
+			defineMutation<
+				{ commentId: string; emoji: string },
+				CollectionContext,
+				void
+			>({
+				name: unreactMutationName,
+				handler: async (args, ctx, actions) => {
+					const actorId = resolveActor(getActorId, ctx);
+					const id = reactionId(args.commentId, actorId, args.emoji);
+					if (reactionStore.get(id) === undefined) return;
+					await actions.delete(reactionsTable, { id });
+				}
+			}),
+			defineMutation<
+				{ commentId: string; emoji: string },
+				CollectionContext,
+				{ reacted: boolean }
+			>({
+				name: toggleReactionMutationName,
+				handler: async (args, ctx, actions) => {
+					if (!isAllowed(args.emoji)) {
+						throw new CommentReactionNotAllowedError(args.emoji);
+					}
+					const actorId = resolveActor(getActorId, ctx);
+					const comment = store.getById(args.commentId);
+					if (comment === undefined) {
+						throw new UnauthorizedError(
+							`comments:toggleReaction on missing comment "${args.commentId}"`
+						);
+					}
+					if (!canReadResource(comment.resourceId, ctx)) {
+						throw new UnauthorizedError(
+							`comments:toggleReaction on comment "${args.commentId}" (no read access)`
+						);
+					}
+					const id = reactionId(args.commentId, actorId, args.emoji);
+					const existing = reactionStore.get(id);
+					if (existing === undefined) {
+						const row: CommentReactionRow = {
+							actorId,
+							commentId: args.commentId,
+							createdAt: now(),
+							emoji: args.emoji,
+							id
+						};
+						await actions.insert(reactionsTable, row);
+						return { reacted: true };
+					}
+					await actions.delete(reactionsTable, { id });
+					return { reacted: false };
+				}
 			})
 		];
 	}

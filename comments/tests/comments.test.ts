@@ -18,8 +18,10 @@ import { expectRejection } from '@absolutejs/sync/testing';
 import {
 	CommentDepthExceededError,
 	CommentParentMismatchError,
+	CommentReactionNotAllowedError,
 	createCommentsPack,
 	createInMemoryCommentsStore,
+	type CommentReactionRow,
 	type CommentRow
 } from '../src';
 
@@ -384,7 +386,7 @@ describe('createCommentsPack', () => {
 				name: '@absolutejs/sync-pack-comments',
 				ownsTables: ['comments'],
 				readsTables: [],
-				version: '0.3.0'
+				version: '0.4.0'
 			}
 		]);
 		expect(inspection.readers).toContain('comments');
@@ -605,6 +607,195 @@ describe('createCommentsPack', () => {
 		});
 		expect(subscription.initial.map((row) => row.authorId)).toEqual([
 			'alice'
+		]);
+	});
+
+	// ─── 0.4 — reactions ──────────────────────────────────────────────────
+
+	test('reactions undefined: no comment_reactions surfaces are registered', () => {
+		const engine = createSyncEngine();
+		engine.registerPack(
+			createCommentsPack<Ctx>({
+				canReadResource: () => true,
+				getActorId: (ctx) => ctx.userId
+			})
+		);
+		const inspection = engine.inspect();
+		expect(inspection.collections.map((c) => c.name)).not.toContain(
+			'comment_reactions'
+		);
+		expect(inspection.mutations).not.toContain('comments:react');
+	});
+
+	test('reactions: react inserts; subscription returns reactions per comment', async () => {
+		const engine = createSyncEngine();
+		engine.registerPack(
+			createCommentsPack<Ctx>({
+				canReadResource: () => true,
+				getActorId: (ctx) => ctx.userId,
+				newId: newIdFactory(),
+				reactions: {}
+			})
+		);
+		const comment = (await engine.runMutation(
+			'comments:create',
+			{ body: 'first', resourceId: 'doc-1' },
+			{ userId: 'alice' }
+		)) as CommentRow;
+
+		await engine.runMutation(
+			'comments:react',
+			{ commentId: comment.id, emoji: '👍' },
+			{ userId: 'alice' }
+		);
+		await engine.runMutation(
+			'comments:react',
+			{ commentId: comment.id, emoji: '❤️' },
+			{ userId: 'bob' }
+		);
+
+		const sub = await engine.subscribe<
+			CommentReactionRow,
+			{ commentId: string }
+		>({
+			collection: 'comment_reactions',
+			ctx: { userId: 'eve' },
+			onDiff: () => {},
+			params: { commentId: comment.id }
+		});
+		const emojis = sub.initial.map((row) => row.emoji).sort();
+		expect(emojis).toEqual(['❤️', '👍']);
+	});
+
+	test('react is idempotent: deterministic row id, second call no-ops', async () => {
+		const engine = createSyncEngine();
+		engine.registerPack(
+			createCommentsPack<Ctx>({
+				canReadResource: () => true,
+				getActorId: (ctx) => ctx.userId,
+				newId: newIdFactory(),
+				reactions: {}
+			})
+		);
+		const comment = (await engine.runMutation(
+			'comments:create',
+			{ body: 'first', resourceId: 'doc-1' },
+			{ userId: 'alice' }
+		)) as CommentRow;
+
+		const first = (await engine.runMutation(
+			'comments:react',
+			{ commentId: comment.id, emoji: '👍' },
+			{ userId: 'alice' }
+		)) as CommentReactionRow;
+		const second = (await engine.runMutation(
+			'comments:react',
+			{ commentId: comment.id, emoji: '👍' },
+			{ userId: 'alice' }
+		)) as CommentReactionRow;
+		expect(first.id).toBe(second.id);
+		expect(first.createdAt).toBe(second.createdAt);
+	});
+
+	test('toggleReaction inserts then deletes', async () => {
+		const engine = createSyncEngine();
+		engine.registerPack(
+			createCommentsPack<Ctx>({
+				canReadResource: () => true,
+				getActorId: (ctx) => ctx.userId,
+				newId: newIdFactory(),
+				reactions: {}
+			})
+		);
+		const comment = (await engine.runMutation(
+			'comments:create',
+			{ body: 'first', resourceId: 'doc-1' },
+			{ userId: 'alice' }
+		)) as CommentRow;
+		const first = (await engine.runMutation(
+			'comments:toggleReaction',
+			{ commentId: comment.id, emoji: '🎉' },
+			{ userId: 'alice' }
+		)) as { reacted: boolean };
+		expect(first.reacted).toBe(true);
+		const second = (await engine.runMutation(
+			'comments:toggleReaction',
+			{ commentId: comment.id, emoji: '🎉' },
+			{ userId: 'alice' }
+		)) as { reacted: boolean };
+		expect(second.reacted).toBe(false);
+	});
+
+	test('allowedEmojis: react with a non-allowed emoji is rejected', async () => {
+		const engine = createSyncEngine();
+		engine.registerPack(
+			createCommentsPack<Ctx>({
+				canReadResource: () => true,
+				getActorId: (ctx) => ctx.userId,
+				newId: newIdFactory(),
+				reactions: { allowedEmojis: ['👍', '❤️'] }
+			})
+		);
+		const comment = (await engine.runMutation(
+			'comments:create',
+			{ body: 'first', resourceId: 'doc-1' },
+			{ userId: 'alice' }
+		)) as CommentRow;
+		const error = await expectRejection(() =>
+			engine.runMutation(
+				'comments:react',
+				{ commentId: comment.id, emoji: '💀' },
+				{ userId: 'alice' }
+			)
+		);
+		expect(error).toBeInstanceOf(CommentReactionNotAllowedError);
+	});
+
+	test('canReadResource gates the reactions collection', async () => {
+		const engine = createSyncEngine();
+		engine.registerPack(
+			createCommentsPack<Ctx>({
+				canReadResource: (resourceId, ctx) =>
+					resourceId === 'public' || ctx.userId === 'alice',
+				getActorId: (ctx) => ctx.userId,
+				newId: newIdFactory(),
+				reactions: {}
+			})
+		);
+		const comment = (await engine.runMutation(
+			'comments:create',
+			{ body: 'first', resourceId: 'private' },
+			{ userId: 'alice' }
+		)) as CommentRow;
+		await engine.runMutation(
+			'comments:react',
+			{ commentId: comment.id, emoji: '👍' },
+			{ userId: 'alice' }
+		);
+
+		const subscribeError = await expectRejection(() =>
+			engine.subscribe<CommentReactionRow, { commentId: string }>({
+				collection: 'comment_reactions',
+				ctx: { userId: 'bob' },
+				onDiff: () => {},
+				params: { commentId: comment.id }
+			})
+		);
+		expect((subscribeError as Error).message).toMatch(/Not authorized/);
+	});
+
+	test('inspect surfaces ownsTables including the reactions table when enabled', () => {
+		const engine = createSyncEngine();
+		engine.registerPack(
+			createCommentsPack<Ctx>({
+				canReadResource: () => true,
+				getActorId: (ctx) => ctx.userId,
+				reactions: {}
+			})
+		);
+		expect(engine.inspect().packs[0]?.ownsTables.sort()).toEqual([
+			'comment_reactions',
+			'comments'
 		]);
 	});
 });
