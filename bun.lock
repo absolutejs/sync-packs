@@ -49,6 +49,19 @@
     },
     "favorites": {
       "name": "@absolutejs/sync-pack-favorites",
+      "version": "0.2.0",
+      "devDependencies": {
+        "@absolutejs/sync": "^1.9.2",
+        "@types/bun": "1.3.14",
+        "prettier": "3.5.3",
+        "typescript": "5.8.3",
+      },
+      "peerDependencies": {
+        "@absolutejs/sync": ">= 1.9.2",
+      },
+    },
+    "mentions": {
+      "name": "@absolutejs/sync-pack-mentions",
       "version": "0.1.0",
       "devDependencies": {
         "@absolutejs/sync": "^1.9.2",
@@ -75,7 +88,7 @@
     },
     "presence": {
       "name": "@absolutejs/sync-pack-presence",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "devDependencies": {
         "@absolutejs/sync": "^1.9.2",
         "@types/bun": "1.3.14",
@@ -110,6 +123,8 @@
     "@absolutejs/sync-pack-digest": ["@absolutejs/sync-pack-digest@workspace:digest"],
 
     "@absolutejs/sync-pack-favorites": ["@absolutejs/sync-pack-favorites@workspace:favorites"],
+
+    "@absolutejs/sync-pack-mentions": ["@absolutejs/sync-pack-mentions@workspace:mentions"],
 
     "@absolutejs/sync-pack-notifications": ["@absolutejs/sync-pack-notifications@workspace:notifications"],
 
