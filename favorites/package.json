@@ -1,7 +1,7 @@
 {
 	"name": "@absolutejs/sync-pack-favorites",
-	"version": "0.1.0",
-	"description": "Per-actor saved-resources pack for @absolutejs/sync — favorite/unfavorite/list with optional join to host resources",
+	"version": "0.2.0",
+	"description": "Per-actor saved-resources pack for @absolutejs/sync — favorite/unfavorite/pin/list with optional join to host resources",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/absolutejs/sync-packs.git",

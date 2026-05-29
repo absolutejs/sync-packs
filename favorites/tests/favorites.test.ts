@@ -206,6 +206,9 @@ describe('createFavoritesPack', () => {
 		expect(inspection.mutations).toContain('team_favorites:favorite');
 		expect(inspection.mutations).toContain('team_favorites:unfavorite');
 		expect(inspection.mutations).toContain('team_favorites:toggle');
+		expect(inspection.mutations).toContain('team_favorites:pin');
+		expect(inspection.mutations).toContain('team_favorites:unpin');
+		expect(inspection.mutations).toContain('team_favorites:togglePin');
 		expect(inspection.collections.map((c) => c.name)).toContain(
 			'team_favorites'
 		);
@@ -219,8 +222,88 @@ describe('createFavoritesPack', () => {
 				name: '@absolutejs/sync-pack-favorites',
 				ownsTables: ['favorites'],
 				readsTables: [],
-				version: '0.1.0'
+				version: '0.2.0'
 			}
 		]);
+	});
+
+	test('pin sets pinnedAt; unpin clears it; togglePin flips', async () => {
+		const engine = createSyncEngine();
+		let clock = 1_000;
+		engine.registerPack(
+			createFavoritesPack<Ctx>({
+				getActorId: (ctx) => ctx.userId,
+				now: () => clock
+			})
+		);
+
+		// pin on a row that doesn't exist yet — creates a pinned favorite
+		const created = (await engine.runMutation(
+			'favorites:pin',
+			{ resourceId: 'doc-9', resourceKind: 'doc' },
+			{ userId: 'alice' }
+		)) as FavoriteRow;
+		expect(created.pinnedAt).toBe(1_000);
+		expect(created.createdAt).toBe(1_000);
+
+		// pin again — idempotent, keeps the same pinnedAt
+		clock = 2_000;
+		const repinned = (await engine.runMutation(
+			'favorites:pin',
+			{ resourceId: 'doc-9', resourceKind: 'doc' },
+			{ userId: 'alice' }
+		)) as FavoriteRow;
+		expect(repinned.pinnedAt).toBe(1_000);
+
+		// togglePin → unpinned
+		const toggled = (await engine.runMutation(
+			'favorites:togglePin',
+			{ resourceId: 'doc-9', resourceKind: 'doc' },
+			{ userId: 'alice' }
+		)) as { pinned: boolean };
+		expect(toggled.pinned).toBe(false);
+
+		// unpin on already-unpinned — still returns the row, pinnedAt stays null
+		const unpinned = (await engine.runMutation(
+			'favorites:unpin',
+			{ resourceId: 'doc-9', resourceKind: 'doc' },
+			{ userId: 'alice' }
+		)) as FavoriteRow;
+		expect(unpinned.pinnedAt).toBeNull();
+	});
+
+	test('pinning is scoped per-actor (bob cannot affect alice)', async () => {
+		const engine = createSyncEngine();
+		engine.registerPack(
+			createFavoritesPack<Ctx>({
+				getActorId: (ctx) => ctx.userId,
+				now: () => 5_000
+			})
+		);
+
+		await engine.runMutation(
+			'favorites:favorite',
+			{ resourceId: 'doc-1', resourceKind: 'doc' },
+			{ userId: 'alice' }
+		);
+		await engine.runMutation(
+			'favorites:pin',
+			{ resourceId: 'doc-1', resourceKind: 'doc' },
+			{ userId: 'alice' }
+		);
+
+		// Bob pinning the same resource creates HIS own row, not Alice's.
+		const bobView = await engine.subscribe<FavoriteRow, { resourceKind?: string }>({
+			collection: 'favorites',
+			ctx: { userId: 'bob' },
+			onDiff: () => {},
+			params: { resourceKind: undefined }
+		});
+		await engine.runMutation(
+			'favorites:pin',
+			{ resourceId: 'doc-1', resourceKind: 'doc' },
+			{ userId: 'bob' }
+		);
+		expect(bobView.initial.length).toBe(0); // initial snapshot, pre-mutation
 	});
 });

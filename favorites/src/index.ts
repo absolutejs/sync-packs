@@ -35,6 +35,12 @@ export type FavoriteRow = {
 	resourceKind: string;
 	resourceId: string;
 	createdAt: number;
+	/**
+	 * When the actor pinned this favorite, or `null` when unpinned.
+	 * Clients can sort pinned-first by descending `pinnedAt`. Set by the
+	 * `favorites:pin` / `favorites:togglePin` mutations.
+	 */
+	pinnedAt: number | null;
 };
 
 /** A `FavoriteRow` paired with the host's resource row, from the optional join. */
@@ -162,7 +168,7 @@ export const createFavoritesPack = <
 		ownsTables: [table],
 		readsTables:
 			joinResources === undefined ? [] : [joinResources.table],
-		version: '0.1.0',
+		version: '0.2.0',
 
 		schemas: defineSchema({
 			[table]: {
@@ -171,7 +177,9 @@ export const createFavoritesPack = <
 					actorId: field.string,
 					resourceKind: field.string,
 					resourceId: field.string,
-					createdAt: field.number
+					createdAt: field.number,
+					pinnedAt: (value) =>
+						value === null || typeof value === 'number'
 				}
 			}
 		}),
@@ -254,6 +262,7 @@ export const createFavoritesPack = <
 						actorId,
 						createdAt: now(),
 						id,
+						pinnedAt: null,
 						resourceId: args.resourceId,
 						resourceKind: args.resourceKind
 					};
@@ -289,6 +298,7 @@ export const createFavoritesPack = <
 							actorId,
 							createdAt: now(),
 							id,
+							pinnedAt: null,
 							resourceId: args.resourceId,
 							resourceKind: args.resourceKind
 						};
@@ -297,6 +307,96 @@ export const createFavoritesPack = <
 					}
 					await actions.delete(table, { id });
 					return { favorited: false };
+				}
+			}),
+			// 0.2: pinning — flips a per-actor `pinnedAt` timestamp so
+			// clients can sort pinned-first. Idempotent: pinning twice
+			// keeps the original `pinnedAt`; unpinning a non-favorite is
+			// a no-op.
+			defineMutation<
+				{ resourceKind: string; resourceId: string },
+				CollectionContext,
+				FavoriteRow
+			>({
+				name: `${prefix}favorites:pin`,
+				handler: async (args, ctx, actions) => {
+					const actorId = resolveActor(getActorId, ctx);
+					const id = rowId(actorId, args.resourceKind, args.resourceId);
+					const existing = store.getById(id);
+					if (existing === undefined) {
+						const row: FavoriteRow = {
+							actorId,
+							createdAt: now(),
+							id,
+							pinnedAt: now(),
+							resourceId: args.resourceId,
+							resourceKind: args.resourceKind
+						};
+						return (await actions.insert(
+							table,
+							row
+						)) as FavoriteRow;
+					}
+					if (existing.pinnedAt !== null) return existing;
+					return (await actions.update(table, {
+						...existing,
+						pinnedAt: now()
+					})) as FavoriteRow;
+				}
+			}),
+			defineMutation<
+				{ resourceKind: string; resourceId: string },
+				CollectionContext,
+				FavoriteRow | undefined
+			>({
+				name: `${prefix}favorites:unpin`,
+				handler: async (args, ctx, actions) => {
+					const actorId = resolveActor(getActorId, ctx);
+					const id = rowId(actorId, args.resourceKind, args.resourceId);
+					const existing = store.getById(id);
+					if (existing === undefined || existing.pinnedAt === null) {
+						return existing;
+					}
+					return (await actions.update(table, {
+						...existing,
+						pinnedAt: null
+					})) as FavoriteRow;
+				}
+			}),
+			defineMutation<
+				{ resourceKind: string; resourceId: string },
+				CollectionContext,
+				{ pinned: boolean }
+			>({
+				name: `${prefix}favorites:togglePin`,
+				handler: async (args, ctx, actions) => {
+					const actorId = resolveActor(getActorId, ctx);
+					const id = rowId(actorId, args.resourceKind, args.resourceId);
+					const existing = store.getById(id);
+					if (existing === undefined) {
+						const row: FavoriteRow = {
+							actorId,
+							createdAt: now(),
+							id,
+							pinnedAt: now(),
+							resourceId: args.resourceId,
+							resourceKind: args.resourceKind
+						};
+						await actions.insert(table, row);
+						return { pinned: true };
+					}
+					if (existing.pinnedAt === null) {
+						await actions.update(table, {
+							...existing,
+							pinnedAt: now()
+						});
+						return { pinned: true };
+					}
+					await actions.update(table, {
+						...existing,
+						pinnedAt: null
+					});
+					return { pinned: false };
 				}
 			})
 		]
