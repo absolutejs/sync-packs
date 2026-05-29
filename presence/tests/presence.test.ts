@@ -18,6 +18,7 @@ import { expectRejection } from '@absolutejs/sync/testing';
 import {
 	createInMemoryPresenceStore,
 	createPresencePack,
+	isCurrentlyTyping,
 	type PresenceRow
 } from '../src';
 
@@ -340,7 +341,7 @@ describe('createPresencePack', () => {
 		expect(inspection.packs).toEqual([
 			{
 				name: '@absolutejs/sync-pack-presence',
-				version: '0.2.0',
+				version: '0.3.0',
 				ownsTables: ['presence'],
 				readsTables: []
 			}
@@ -349,9 +350,82 @@ describe('createPresencePack', () => {
 		expect(inspection.writers).toContain('presence');
 		expect(inspection.mutations).toContain('presence:heartbeat');
 		expect(inspection.mutations).toContain('presence:leave');
+		expect(inspection.mutations).toContain('presence:typing');
 		expect(inspection.schedules.map((s) => s.name)).toContain(
 			'presence:cleanup'
 		);
 		expect(inspection.collections.map((c) => c.name)).toContain('presence');
+	});
+
+	test('presence:typing patches state.typing + state.typingExpiresAt without bumping heartbeat TTL', async () => {
+		const engine = createSyncEngine();
+		let clock = 1_000;
+		engine.registerPack(
+			createPresencePack<Ctx, { typing?: boolean }>({
+				getActorId: (ctx) => ctx.userId,
+				heartbeatTtlSec: 60,
+				now: () => clock,
+				typingTtlSec: 5
+			})
+		);
+
+		await engine.runMutation(
+			'presence:heartbeat',
+			{ channel: 'doc-1', state: {} },
+			{ userId: 'alice' }
+		);
+
+		clock = 3_000;
+		const typingRow = (await engine.runMutation(
+			'presence:typing',
+			{ channel: 'doc-1', typing: true },
+			{ userId: 'alice' }
+		)) as PresenceRow<{ typing: boolean; typingExpiresAt: number | null }>;
+		expect(typingRow.state.typing).toBe(true);
+		expect(typingRow.state.typingExpiresAt).toBe(3_000 + 5_000);
+		// Heartbeat TTL stays anchored to the original heartbeat at t=1000.
+		expect(typingRow.expiresAt).toBe(1_000 + 60_000);
+
+		// The helper agrees with the timestamp.
+		expect(isCurrentlyTyping(typingRow, 4_000)).toBe(true);
+		expect(isCurrentlyTyping(typingRow, 8_001)).toBe(false);
+
+		// Clearing typing flips both flag + timestamp.
+		const cleared = (await engine.runMutation(
+			'presence:typing',
+			{ channel: 'doc-1', typing: false },
+			{ userId: 'alice' }
+		)) as PresenceRow<{ typing: boolean; typingExpiresAt: number | null }>;
+		expect(cleared.state.typing).toBe(false);
+		expect(cleared.state.typingExpiresAt).toBeNull();
+		expect(isCurrentlyTyping(cleared, 4_000)).toBe(false);
+	});
+
+	test('presence:typing without a prior heartbeat throws', async () => {
+		const engine = createSyncEngine();
+		engine.registerPack(
+			createPresencePack<Ctx>({ getActorId: (ctx) => ctx.userId })
+		);
+		const error = await expectRejection(() =>
+			engine.runMutation(
+				'presence:typing',
+				{ channel: 'doc-1', typing: true },
+				{ userId: 'alice' }
+			)
+		);
+		expect((error as Error).message).toMatch(/no heartbeat for/);
+	});
+
+	test('isCurrentlyTyping returns false for rows without typing state', () => {
+		const row: PresenceRow<{ cursor?: unknown }> = {
+			id: 'doc-1:alice',
+			channel: 'doc-1',
+			actorId: 'alice',
+			scope: null,
+			state: { cursor: { x: 1, y: 2 } },
+			expiresAt: 9_999,
+			heartbeatAt: 1_000
+		};
+		expect(isCurrentlyTyping(row, 5_000)).toBe(false);
 	});
 });

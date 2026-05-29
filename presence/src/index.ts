@@ -139,6 +139,14 @@ export type PresencePackConfig<Ctx = CollectionContext, State = unknown> = {
 	 */
 	cleanupCron?: string;
 	/**
+	 * Seconds a `presence:typing { typing: true }` ping stays "active"
+	 * before the embedded `state.typingExpiresAt` falls in the past.
+	 * Clients read typing as `state.typingExpiresAt > Date.now()` — no
+	 * server-side cleanup is needed since the timestamp ages out on its
+	 * own. Default `5`.
+	 */
+	typingTtlSec?: number;
+	/**
 	 * Override the storage adapter. Default: a per-instance in-memory
 	 * store. Pass your own for a persistent backend.
 	 */
@@ -152,6 +160,28 @@ export type PresencePackConfig<Ctx = CollectionContext, State = unknown> = {
 
 const DEFAULT_HEARTBEAT_TTL_SEC = 30;
 const DEFAULT_CLEANUP_CRON = '*/15 * * * * *';
+const DEFAULT_TYPING_TTL_SEC = 5;
+
+/**
+ * Returns `true` when `row.state` carries an unexpired typing flag set
+ * by `presence:typing { typing: true }`. Use this in client-side
+ * filters so a stalled typist falls back to "not typing" without any
+ * server-side cleanup. Pass `nowMs` in tests for deterministic checks.
+ */
+export const isCurrentlyTyping = (
+	row: PresenceRow<unknown>,
+	nowMs: number = Date.now()
+): boolean => {
+	const state = row.state as
+		| { typing?: boolean; typingExpiresAt?: number | null }
+		| null
+		| undefined;
+	if (state === null || state === undefined) return false;
+	if (state.typing !== true) return false;
+	const expiresAt = state.typingExpiresAt;
+	if (expiresAt === null || expiresAt === undefined) return false;
+	return expiresAt > nowMs;
+};
 
 const resolveActorId = (
 	getActorId: NonNullable<PresencePackConfig['getActorId']>,
@@ -193,6 +223,8 @@ export const createPresencePack = <
 	const cleanupScheduleName = `${prefix}presence:cleanup`;
 	const ttlMs =
 		(config.heartbeatTtlSec ?? DEFAULT_HEARTBEAT_TTL_SEC) * 1000;
+	const typingTtlMs =
+		(config.typingTtlSec ?? DEFAULT_TYPING_TTL_SEC) * 1000;
 	const cleanupCron = config.cleanupCron ?? DEFAULT_CLEANUP_CRON;
 	const store = (config.store ?? createInMemoryPresenceStore<State>()) as
 		PresenceStore<State>;
@@ -206,12 +238,13 @@ export const createPresencePack = <
 
 	type Params = { channel: string };
 	const cursorMutationName = `${prefix}presence:cursor`;
+	const typingMutationName = `${prefix}presence:typing`;
 
 	return defineSyncPack({
 		name: '@absolutejs/sync-pack-presence',
 		ownsTables: [table],
 		readsTables: [],
-		version: '0.2.0',
+		version: '0.3.0',
 
 		schemas: defineSchema({
 			[table]: {
@@ -382,6 +415,45 @@ export const createPresencePack = <
 						state: {
 							...((existing.state ?? {}) as Record<string, unknown>),
 							cursor: args.cursor
+						} as State
+					};
+					return (await actions.update(table, merged)) as
+						PresenceRow<State>;
+				}
+			}),
+			// 0.3 — presence:typing patches `state.typing` plus a
+			// `state.typingExpiresAt` deadline so clients can render an
+			// "X is typing…" line that fades on its own. Clients filter
+			// readers by `state.typingExpiresAt > Date.now()`; no server
+			// cleanup is needed since the timestamp ages out naturally.
+			// Like presence:cursor, this doesn't touch the row's
+			// heartbeat TTL — typing is a state patch, not a membership
+			// event.
+			defineMutation<
+				{ channel: string; typing: boolean },
+				CollectionContext,
+				PresenceRow<State>
+			>({
+				name: typingMutationName,
+				handler: async (args, ctx, actions) => {
+					const actorId = resolveActorId(getActorId, ctx);
+					const rowId = `${args.channel}:${actorId}`;
+					const existing = (
+						store.reader.all(ctx as CollectionContext) as
+							PresenceRow<State>[]
+					).find((r) => r.id === rowId);
+					if (existing === undefined) {
+						throw new Error(
+							`presence:typing: no heartbeat for ${rowId} (call presence:heartbeat first)`
+						);
+					}
+					const t = now();
+					const merged: PresenceRow<State> = {
+						...existing,
+						state: {
+							...((existing.state ?? {}) as Record<string, unknown>),
+							typing: args.typing,
+							typingExpiresAt: args.typing ? t + typingTtlMs : null
 						} as State
 					};
 					return (await actions.update(table, merged)) as
