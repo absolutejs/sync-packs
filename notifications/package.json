@@ -1,11 +1,15 @@
 {
 	"name": "@absolutejs/sync-pack-notifications",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "Per-actor inbox pack for @absolutejs/sync — notify, mark-read, scoped reads, optional TTL auto-archive",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/absolutejs/sync-packs.git",
 		"directory": "notifications"
+	},
+	"homepage": "https://github.com/absolutejs/sync-packs/tree/main/notifications",
+	"bugs": {
+		"url": "https://github.com/absolutejs/sync-packs/issues"
 	},
 	"main": "./dist/index.js",
 	"module": "./dist/index.js",

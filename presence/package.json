@@ -1,11 +1,15 @@
 {
 	"name": "@absolutejs/sync-pack-presence",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"description": "Per-channel live presence pack for @absolutejs/sync — heartbeat-driven, scoped, TTL-cleaned, with cursor + typing state patches",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/absolutejs/sync-packs.git",
 		"directory": "presence"
+	},
+	"homepage": "https://github.com/absolutejs/sync-packs/tree/main/presence",
+	"bugs": {
+		"url": "https://github.com/absolutejs/sync-packs/issues"
 	},
 	"main": "./dist/index.js",
 	"module": "./dist/index.js",
