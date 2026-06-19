@@ -127,6 +127,15 @@ export type PresencePackConfig<Ctx = CollectionContext, State = unknown> = {
 	 */
 	scope?: (ctx: Ctx) => string | null | undefined;
 	/**
+	 * Optional per-channel access gate. When set, a caller may only
+	 * subscribe to a channel's presence AND heartbeat/typing/leave in it
+	 * if this returns true — so presence can't be read or written for a
+	 * channel the actor has no business in (e.g. a private room they only
+	 * know the id of). Default: no gating (any identified caller, any
+	 * channel). May be async.
+	 */
+	canAccessChannel?: (channel: string, ctx: Ctx) => boolean | Promise<boolean>;
+	/**
 	 * Seconds a heartbeat keeps a presence row alive. The actor must
 	 * re-call `presence:heartbeat` before this elapses, or the cleanup
 	 * schedule will reap the row. Default `30`.
@@ -235,6 +244,14 @@ export const createPresencePack = <
 		ctx: CollectionContext
 	) => string | undefined;
 	const scope = config.scope as PresencePackConfig['scope'];
+	const canAccessChannel = config.canAccessChannel as
+		| ((channel: string, ctx: CollectionContext) => boolean | Promise<boolean>)
+		| undefined;
+	const channelAllowed = (
+		channel: string,
+		ctx: CollectionContext
+	): boolean | Promise<boolean> =>
+		canAccessChannel ? canAccessChannel(channel, ctx) : true;
 
 	type Params = { channel: string };
 	const cursorMutationName = `${prefix}presence:cursor`;
@@ -330,14 +347,19 @@ export const createPresencePack = <
 						row.expiresAt > now()
 					);
 				},
-				authorize: (_params, ctx) => {
-					// Scoped reads — caller must produce a defined ctx; the
-					// scope filter alone is enough since rows carry the
-					// scope. We refuse only if `getActorId` cannot identify
-					// the caller AND no scope was configured, to avoid
-					// world-readable presence by accident.
-					if (scope !== undefined) return true;
-					return getActorId(ctx as CollectionContext) !== undefined;
+				authorize: (params, ctx) => {
+					// Identify the caller (scope OR getActorId), then gate the
+					// channel through canAccessChannel (if configured) so
+					// presence isn't world-readable for a channel the actor has
+					// no business in.
+					const identified =
+						scope !== undefined ||
+						getActorId(ctx as CollectionContext) !== undefined;
+					if (!identified) return false;
+					return channelAllowed(
+						params.channel,
+						ctx as CollectionContext
+					);
 				}
 			})
 		],
@@ -349,6 +371,8 @@ export const createPresencePack = <
 				PresenceRow<State>
 			>({
 				name: heartbeatMutationName,
+				authorize: (args, ctx) =>
+					channelAllowed(args.channel, ctx as CollectionContext),
 				handler: async (args, ctx, actions) => {
 					const actorId = resolveActorId(getActorId, ctx);
 					const callerScope = resolveScope(scope, ctx);
@@ -379,6 +403,8 @@ export const createPresencePack = <
 			}),
 			defineMutation<{ channel: string }, CollectionContext, void>({
 				name: leaveMutationName,
+				authorize: (args, ctx) =>
+					channelAllowed(args.channel, ctx as CollectionContext),
 				handler: async (_args, ctx, actions) => {
 					const actorId = resolveActorId(getActorId, ctx);
 					await actions.delete(table, {
@@ -396,6 +422,8 @@ export const createPresencePack = <
 				PresenceRow<State>
 			>({
 				name: cursorMutationName,
+				authorize: (args, ctx) =>
+					channelAllowed(args.channel, ctx as CollectionContext),
 				handler: async (args, ctx, actions) => {
 					const actorId = resolveActorId(getActorId, ctx);
 					const rowId = `${args.channel}:${actorId}`;
@@ -435,6 +463,8 @@ export const createPresencePack = <
 				PresenceRow<State>
 			>({
 				name: typingMutationName,
+				authorize: (args, ctx) =>
+					channelAllowed(args.channel, ctx as CollectionContext),
 				handler: async (args, ctx, actions) => {
 					const actorId = resolveActorId(getActorId, ctx);
 					const rowId = `${args.channel}:${actorId}`;
