@@ -48,4 +48,4 @@ Mention rows are idempotent (`(sourceKind, sourceId, mentionedActorId)` is the p
 
 ## License
 
-CC BY-NC 4.0 — same as the rest of the @absolutejs ecosystem.
+Apache License 2.0. See [LICENSE](./LICENSE).
