@@ -1,6 +1,6 @@
 {
 	"name": "@absolutejs/sync-pack-mentions",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "@mention parser pack for @absolutejs/sync — extracts @usernames from a body, writes per-actor mention rows, fires an onMention hook that composes with the notifications pack",
 	"repository": {
 		"type": "git",

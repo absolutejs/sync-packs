@@ -1,6 +1,6 @@
 {
 	"name": "@absolutejs/sync-pack-utils",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "Shared helpers for @absolutejs/sync packs — resolveActor, requireRowOwner/Moderator, createInMemoryStore, and other patterns extracted from the official packs",
 	"repository": {
 		"type": "git",
