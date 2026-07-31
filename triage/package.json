@@ -1,0 +1,84 @@
+{
+  "name": "@absolutejs/sync-pack-triage",
+  "version": "0.1.0",
+  "description": "Per-actor triage pack for @absolutejs/sync — unread/seen, snooze that resurfaces on new activity, dismiss that sticks, and mute, over any host resource",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/absolutejs/sync-packs.git",
+    "directory": "triage"
+  },
+  "homepage": "https://github.com/absolutejs/sync-packs/tree/main/triage",
+  "bugs": {
+    "url": "https://github.com/absolutejs/sync-packs/issues"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "Alex Kahn",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "absolutejs",
+    "sync",
+    "sync-pack",
+    "triage",
+    "inbox",
+    "snooze",
+    "unread"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts src/manifest.ts --outdir dist --sourcemap --target=bun --external @absolutejs/sync && tsc --project tsconfig.build.json && absolute-manifest emit",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"./**/*.{ts,json,md}\"",
+    "release": "bun run format && bun run typecheck && bun run test && bun run build && bun publish"
+  },
+  "peerDependencies": {
+    "@absolutejs/sync": ">=2.11.0 <3"
+  },
+  "devDependencies": {
+    "@absolutejs/sync": "2.11.0",
+    "@types/bun": "1.3.14",
+    "prettier": "3.5.3",
+    "typescript": "5.8.3"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./manifest": {
+      "types": "./dist/manifest.d.ts",
+      "import": "./dist/manifest.js",
+      "default": "./dist/manifest.js"
+    },
+    "./manifest.json": "./dist/manifest.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "absolutejs": {
+    "manifestContract": 2,
+    "runtimePeers": {
+      "@absolutejs/sync": {
+        "artifactImports": [
+          "@absolutejs/sync/engine"
+        ],
+        "buildExternals": [
+          "@absolutejs/sync"
+        ],
+        "range": ">=2.11.0 <3",
+        "tested": "2.11.0"
+      }
+    }
+  },
+  "dependencies": {
+    "@absolutejs/manifest": "^0.7.1",
+    "@sinclair/typebox": "^0.34.0"
+  }
+}

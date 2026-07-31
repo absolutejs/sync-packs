@@ -127,6 +127,23 @@
         "@absolutejs/sync": ">=2.11.0 <3",
       },
     },
+    "triage": {
+      "name": "@absolutejs/sync-pack-triage",
+      "version": "0.1.0",
+      "dependencies": {
+        "@absolutejs/manifest": "^0.7.1",
+        "@sinclair/typebox": "^0.34.0",
+      },
+      "devDependencies": {
+        "@absolutejs/sync": "2.11.0",
+        "@types/bun": "1.3.14",
+        "prettier": "3.5.3",
+        "typescript": "5.8.3",
+      },
+      "peerDependencies": {
+        "@absolutejs/sync": ">=2.11.0 <3",
+      },
+    },
     "utils": {
       "name": "@absolutejs/sync-pack-utils",
       "version": "0.1.3",
@@ -163,6 +180,8 @@
     "@absolutejs/sync-pack-notifications": ["@absolutejs/sync-pack-notifications@workspace:notifications"],
 
     "@absolutejs/sync-pack-presence": ["@absolutejs/sync-pack-presence@workspace:presence"],
+
+    "@absolutejs/sync-pack-triage": ["@absolutejs/sync-pack-triage@workspace:triage"],
 
     "@absolutejs/sync-pack-utils": ["@absolutejs/sync-pack-utils@workspace:utils"],
 

@@ -9,6 +9,7 @@
 		"digest",
 		"notifications",
 		"favorites",
+		"triage",
 		"counters",
 		"mentions",
 		"utils"
