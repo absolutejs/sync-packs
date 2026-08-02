@@ -14,6 +14,8 @@ for the API rationale.
 | `notifications/` | `@absolutejs/sync-pack-notifications` | Per-actor inbox (notify + markRead + auto-archive)             | ✅ 0.1.0    |
 | `favorites/` | `@absolutejs/sync-pack-favorites`  | Per-actor saved resources (toggle + optional join to host resources) | ✅ 0.1.0    |
 | `counters/`  | `@absolutejs/sync-pack-counters`   | Read-set-tracked live counters via `defineReactiveQuery`           | ✅ 0.1.0    |
+| `mentions/`  | `@absolutejs/sync-pack-mentions`   | Parses @mentions, stores per-actor rows, and composes notification hooks | ✅ 0.1.4 |
+| `triage/`    | `@absolutejs/sync-pack-triage`     | Per-actor unread, snooze, dismiss, and mute state for host resources | ✅ 0.1.0 |
 | `utils/`     | `@absolutejs/sync-pack-utils`      | Shared helpers (`resolveActor`, `requireRowOwner`, etc.) extracted from the official packs | ✅ 0.1.0    |
 
 ## Why packs
