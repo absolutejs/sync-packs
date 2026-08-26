@@ -1,6 +1,6 @@
 {
   "name": "@absolutejs/sync-pack-presence",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "description": "Per-channel live presence pack for @absolutejs/sync — heartbeat-driven, scoped, TTL-cleaned, with cursor + typing state patches",
   "repository": {
     "type": "git",
@@ -39,7 +39,7 @@
     "@absolutejs/sync": ">=2.11.0 <3"
   },
   "devDependencies": {
-    "@absolutejs/sync": "2.11.0",
+    "@absolutejs/sync": "2.28.0",
     "@types/bun": "1.3.14",
     "prettier": "3.5.3",
     "typescript": "5.8.3"
@@ -62,7 +62,29 @@
     "README.md"
   ],
   "absolutejs": {
-    "manifestContract": 2
+    "manifestContract": 2,
+    "sync": {
+      "localSchema": {
+        "version": 1,
+        "localData": {
+          "collections": [
+            {
+              "match": "*presence*",
+              "sensitivity": "private",
+              "persistence": "memory-only",
+              "evictionPriority": "disposable"
+            }
+          ],
+          "mutations": [
+            {
+              "match": "*presence*",
+              "sensitivity": "private",
+              "persistence": "memory-only"
+            }
+          ]
+        }
+      }
+    }
   },
   "dependencies": {
     "@absolutejs/manifest": "^0.9.0",
