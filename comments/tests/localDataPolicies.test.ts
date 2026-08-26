@@ -35,24 +35,50 @@ const packPolicy = async (directory: string) => {
 
 describe("official pack local-data policies", () => {
   test.each([
-    ["comments", "docs_comments-search", "docs_comments:create", "normal"],
+    [
+      "comments",
+      "docs_comments-search",
+      "docs_comments:create",
+      "normal",
+      "manual",
+    ],
     [
       "favorites",
       "team_favorites-with-resource",
       "team_favorites:toggle",
       "critical",
+      "manual",
     ],
-    ["mentions", "ws_mentions", "ws_mentions:resolve", "normal"],
+    [
+      "mentions",
+      "ws_mentions",
+      "ws_mentions:resolve",
+      "normal",
+      "client-wins",
+    ],
     [
       "notifications",
       "system_notifications",
       "system_notifications:markRead",
       "critical",
+      "client-wins",
     ],
-    ["triage", "inbox_triage", "inbox_triage:snooze", "critical"],
+    [
+      "triage",
+      "inbox_triage",
+      "inbox_triage:snooze",
+      "critical",
+      "client-wins",
+    ],
   ] as const)(
     "%s protects prefixed collections and mutations",
-    async (directory, collectionName, mutationName, evictionPriority) => {
+    async (
+      directory,
+      collectionName,
+      mutationName,
+      evictionPriority,
+      conflictStrategy,
+    ) => {
       const policy = await packPolicy(directory);
       expect(
         resolveSyncLocalCollectionPolicy(policy, collectionName),
@@ -65,6 +91,7 @@ describe("official pack local-data policies", () => {
       expect(
         resolveSyncLocalMutationPolicy(policy, mutationName),
       ).toMatchObject({
+        conflict: { strategy: conflictStrategy },
         onProtectionUnavailable: "memory-only",
         protection: "required",
         sensitivity: "private",
@@ -74,6 +101,22 @@ describe("official pack local-data policies", () => {
       });
     },
   );
+
+  test("retries idempotent favorite intents but retains toggle conflicts", async () => {
+    const policy = await packPolicy("favorites");
+    expect(
+      resolveSyncLocalMutationPolicy(policy, "team_favorites:favorite"),
+    ).toMatchObject({
+      conflict: { maxAttempts: 1, strategy: "client-wins" },
+    });
+    for (const mutation of [
+      "team_favorites:toggle",
+      "team_favorites:togglePin",
+    ])
+      expect(resolveSyncLocalMutationPolicy(policy, mutation)).toMatchObject({
+        conflict: { strategy: "manual" },
+      });
+  });
 
   test("protects derived counters and digest cursors with disposable caches", async () => {
     const counters = await packPolicy("counters");
@@ -108,6 +151,7 @@ describe("official pack local-data policies", () => {
     expect(
       resolveSyncLocalMutationPolicy(policy, "docs_presence:heartbeat"),
     ).toMatchObject({
+      conflict: { strategy: "server-wins" },
       persistence: "memory-only",
       sensitivity: "private",
     });
