@@ -1,6 +1,6 @@
 {
   "name": "@absolutejs/sync-pack-mentions",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "@mention parser pack for @absolutejs/sync — extracts @usernames from a body, writes per-actor mention rows, fires an onMention hook that composes with the notifications pack",
   "repository": {
     "type": "git",
@@ -62,22 +62,10 @@
     "README.md"
   ],
   "absolutejs": {
-    "manifestContract": 2,
-    "runtimePeers": {
-      "@absolutejs/sync": {
-        "artifactImports": [
-          "@absolutejs/sync/engine"
-        ],
-        "buildExternals": [
-          "@absolutejs/sync"
-        ],
-        "range": ">=2.11.0 <3",
-        "tested": "2.11.0"
-      }
-    }
+    "manifestContract": 2
   },
   "dependencies": {
-    "@absolutejs/manifest": "^0.7.1",
+    "@absolutejs/manifest": "^0.9.0",
     "@sinclair/typebox": "^0.34.0"
   }
 }

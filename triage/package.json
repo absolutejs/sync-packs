@@ -1,6 +1,6 @@
 {
   "name": "@absolutejs/sync-pack-triage",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Per-actor triage pack for @absolutejs/sync — unread/seen, snooze that resurfaces on new activity, dismiss that sticks, and mute, over any host resource",
   "repository": {
     "type": "git",
@@ -63,22 +63,10 @@
     "README.md"
   ],
   "absolutejs": {
-    "manifestContract": 2,
-    "runtimePeers": {
-      "@absolutejs/sync": {
-        "artifactImports": [
-          "@absolutejs/sync/engine"
-        ],
-        "buildExternals": [
-          "@absolutejs/sync"
-        ],
-        "range": ">=2.11.0 <3",
-        "tested": "2.11.0"
-      }
-    }
+    "manifestContract": 2
   },
   "dependencies": {
-    "@absolutejs/manifest": "^0.7.1",
+    "@absolutejs/manifest": "^0.9.0",
     "@sinclair/typebox": "^0.34.0"
   }
 }

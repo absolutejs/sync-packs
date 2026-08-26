@@ -1,6 +1,6 @@
 {
   "name": "@absolutejs/sync-pack-favorites",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Per-actor saved-resources pack for @absolutejs/sync — favorite/unfavorite/pin/list with optional join to host resources",
   "repository": {
     "type": "git",
@@ -61,22 +61,10 @@
     "README.md"
   ],
   "absolutejs": {
-    "manifestContract": 2,
-    "runtimePeers": {
-      "@absolutejs/sync": {
-        "artifactImports": [
-          "@absolutejs/sync/engine"
-        ],
-        "buildExternals": [
-          "@absolutejs/sync"
-        ],
-        "range": ">=2.11.0 <3",
-        "tested": "2.11.0"
-      }
-    }
+    "manifestContract": 2
   },
   "dependencies": {
-    "@absolutejs/manifest": "^0.7.1",
+    "@absolutejs/manifest": "^0.9.0",
     "@sinclair/typebox": "^0.34.0"
   }
 }

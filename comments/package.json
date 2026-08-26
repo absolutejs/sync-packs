@@ -1,6 +1,6 @@
 {
   "name": "@absolutejs/sync-pack-comments",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Threaded comments pack for @absolutejs/sync — per-resource ACL-scoped, author/moderator gates, optional CRDT bodies",
   "repository": {
     "type": "git",
@@ -62,22 +62,10 @@
     "README.md"
   ],
   "absolutejs": {
-    "manifestContract": 2,
-    "runtimePeers": {
-      "@absolutejs/sync": {
-        "artifactImports": [
-          "@absolutejs/sync/engine"
-        ],
-        "buildExternals": [
-          "@absolutejs/sync"
-        ],
-        "range": ">=2.11.0 <3",
-        "tested": "2.11.0"
-      }
-    }
+    "manifestContract": 2
   },
   "dependencies": {
-    "@absolutejs/manifest": "^0.7.1",
+    "@absolutejs/manifest": "^0.9.0",
     "@sinclair/typebox": "^0.34.0"
   }
 }
