@@ -822,3 +822,5 @@ export const createCommentsPack = <
 
 	return defineSyncPack(pack);
 };
+
+export * from './persistent';

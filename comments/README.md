@@ -177,3 +177,13 @@ gates the join the same way it gates the base.
   table.
 - **Reactions** — a `reactionsTable` config that adds an emoji-reaction
   side table with create/remove/list mutations.
+
+## Persistent append-only streams (0.7+)
+
+`createPersistentCommentsPack<Ctx, Tx>` supports database-backed comment streams with asynchronous ACLs. Configure `table`, `dependencies` (including membership/session tables), `getActorId`, separate `canReadResource` / `canWriteResource`, and `canMention(actorId, resourceId, ctx)`.
+
+Provide `store.list(resourceId, ctx)` and `store.insert(row, ctx, tx)`. The latter receives the Sync engine transaction: persist comments and any audit/outbox records using that transaction. Configure the engine's durable mutation runner and send operation IDs to prevent duplicate comments on retries. Authorization runs before receipt replay and again at the writer boundary. Do not send email directly inside the transaction.
+
+The collection is named after `table`, scoped by `{resourceId}`; the mutation is `table + ':create'`. It accepts `{resourceId, body, mentions?, links?}`. Actor, ID and timestamp are server-generated. Mentions are explicit actor IDs validated through the host's resource permissions; links require HTTPS without embedded credentials. Bodies are plain text (10,000 characters), with up to 50 mentions and 10 supporting links. Render bodies as text, never raw HTML. No editing/deletion or threading is exposed by this append-only API; `createCommentsPack` remains the existing synchronous threaded API.
+
+This package records mention metadata. Delivery, inboxes, and email are separate host integrations; mentioning someone never grants access.
