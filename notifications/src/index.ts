@@ -397,3 +397,5 @@ export const createNotificationsPack = <Ctx = CollectionContext>(
 
 	return defineSyncPack(pack);
 };
+
+export * from "./persistent";

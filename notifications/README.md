@@ -101,3 +101,13 @@ separate "system" inbox vs the regular one):
 engine.registerPack(createNotificationsPack({ prefix: 'user_', /* ... */ }));
 engine.registerPack(createNotificationsPack({ prefix: 'system_', /* ... */ }));
 ```
+
+## Persistent inboxes and preferences (0.5+)
+
+`createPersistentNotificationsPack<Ctx, Tx>` supports asynchronous storage and ACLs. Supply `table`, `preferencesTable`, `dependencies` (resource and access tables), allowed `kinds`, `getActorId`, `canRead(row, ctx)`, and a store implementing `list`, `get`, `markRead`, `preferences`, and `savePreferences`.
+
+The collection named after `table` filters both actor ownership and current resource access. The `${table}:markRead` mutation checks those gates before durable receipt replay and again before its writer runs. `${preferencesTable}:save` accepts `{values, expectedUpdatedAt}`; preferences contain exactly the configured kinds, each with boolean `email` and `inApp` channels. The owner always comes from the authenticated context, never request data.
+
+Use the supplied engine transaction for writes. `savePreferences` must atomically compare `expectedUpdatedAt`, persist the values and advance its timestamp. The host owns notification creation: insert rows and enqueue ABS Queue jobs in the same transaction as the business event. No client-callable notification-creation mutation is exposed. Recheck resource access, channel preferences and account status before external delivery. Email, retries and templates remain Dispatch/Queue and host concerns.
+
+The existing synchronous `createNotificationsPack` API is unchanged.
