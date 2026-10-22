@@ -1,6 +1,6 @@
 {
   "name": "@absolutejs/sync-pack-utils",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Shared helpers for @absolutejs/sync packs — resolveActor, requireRowOwner/Moderator, createInMemoryStore, and other patterns extracted from the official packs",
   "repository": {
     "type": "git",
@@ -35,10 +35,10 @@
     "release": "bun run format && bun run typecheck && bun run test && bun run build && bun publish"
   },
   "peerDependencies": {
-    "@absolutejs/sync": ">=2.11.0 <3"
+    "@absolutejs/sync": ">=2.11.0 <4"
   },
   "devDependencies": {
-    "@absolutejs/sync": "2.11.0",
+    "@absolutejs/sync": "3.0.0",
     "@types/bun": "1.3.14",
     "prettier": "3.5.3",
     "typescript": "5.8.3"
